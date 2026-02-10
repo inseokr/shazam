@@ -2,20 +2,53 @@
 //  ContentView.swift
 //  Capper
 //
-//  Created by Justin Seo on 2/7/26.
-//
 
 import SwiftUI
 
 struct ContentView: View {
+    @StateObject private var createdRecapStore = CreatedRecapBlogStore.shared
+    @StateObject private var tripsViewModel: TripsViewModel
+    @State private var showTrips = false
+    @State private var showProfile = false
+    @State private var selectedCreatedRecap: CreatedRecapBlog?
+    @State private var dismissToLandingRequested = false
+
+    init() {
+        _tripsViewModel = StateObject(wrappedValue: TripsViewModel(createdRecapStore: CreatedRecapBlogStore.shared))
+    }
+
     var body: some View {
-        VStack {
-            Image(systemName: "globe")
-                .imageScale(.large)
-                .foregroundStyle(.tint)
-            Text("Hello, world!")
+        NavigationStack {
+            LandingView(
+                showTrips: $showTrips,
+                showProfile: $showProfile,
+                selectedCreatedRecap: $selectedCreatedRecap,
+                tripsViewModel: tripsViewModel
+            )
+            .navigationDestination(isPresented: $showTrips) {
+                TripsView(viewModel: tripsViewModel)
+            }
+            .navigationDestination(isPresented: $showProfile) {
+                ProfileView(selectedCreatedRecap: $selectedCreatedRecap)
+                    .environmentObject(createdRecapStore)
+            }
+            .navigationDestination(item: $selectedCreatedRecap) { recap in
+                RecapBlogPageView(
+                    blogId: recap.sourceTripId,
+                    initialTrip: createdRecapStore.tripDraft(for: recap.sourceTripId)
+                )
+            }
         }
-        .padding()
+        .environmentObject(createdRecapStore)
+        .environment(\.dismissToLanding, {
+            dismissToLandingRequested = true
+        })
+        .onChange(of: dismissToLandingRequested) { _, requested in
+            if requested {
+                showTrips = false
+                dismissToLandingRequested = false
+            }
+        }
     }
 }
 
