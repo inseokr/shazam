@@ -18,7 +18,7 @@ struct SplashView: View {
                 .ignoresSafeArea()
 
             VStack(spacing: 0) {
-                Text("BlogFast")
+                Text("BlogGo")
                     .font(.system(size: OnboardingConstants.Splash.titleFontSize, weight: .bold))
                     .foregroundColor(.white)
                     .opacity(textOpacity)

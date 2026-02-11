@@ -251,7 +251,7 @@
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "BlogFast uses your location to set your neighborhood so we only count trips taken near home.";
+				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "BlogGo uses your location to set your neighborhood so we only count trips taken near home.";
 				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Capper needs access to your photos to build recaps.";
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
@@ -296,7 +296,7 @@
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "BlogFast uses your location to set your neighborhood so we only count trips taken near home.";
+				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "BlogGo uses your location to set your neighborhood so we only count trips taken near home.";
 				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Capper needs access to your photos to build recaps.";
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
