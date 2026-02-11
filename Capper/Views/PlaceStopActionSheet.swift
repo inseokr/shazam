@@ -8,7 +8,7 @@ import SwiftUI
 struct PlaceStopActionSheet: View {
     let placeTitle: String
     var onEditName: () -> Void
-    var onManagePhotos: () -> Void
+    var onEditPlace: () -> Void
     var onRemoveFromBlog: () -> Void
     @Environment(\.dismiss) private var dismiss
 
@@ -32,20 +32,31 @@ struct PlaceStopActionSheet: View {
                 })
                 Divider()
                     .background(Color(white: 0.3))
-                actionRow(title: "Manage Photos", action: {
+                actionRow(title: "Edit Place", action: {
                     dismiss()
-                    onManagePhotos()
-                })
-                Divider()
-                    .background(Color(white: 0.3))
-                actionRow(title: "Remove From Blog", action: {
-                    dismiss()
-                    onRemoveFromBlog()
+                    onEditPlace()
                 })
             }
             .background(Color(white: 0.18))
             .cornerRadius(12)
             .padding(.horizontal, 16)
+
+            Button(action: {
+                dismiss()
+                onRemoveFromBlog()
+            }) {
+                Text("Remove From Blog")
+                    .font(.body)
+                    .fontWeight(.semibold)
+                    .foregroundColor(.red)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 16)
+                    .background(Color(white: 0.18)) // Match background color of other group
+                    .cornerRadius(12)
+            }
+            .buttonStyle(.plain)
+            .padding(.horizontal, 16)
+            .padding(.top, 12)
 
             Spacer(minLength: 32)
         }
@@ -71,7 +82,7 @@ struct PlaceStopActionSheet: View {
     PlaceStopActionSheet(
         placeTitle: "Stop 1",
         onEditName: {},
-        onManagePhotos: {},
+        onEditPlace: {},
         onRemoveFromBlog: {}
     )
 }

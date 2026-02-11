@@ -8,6 +8,8 @@ import SwiftUI
 
 struct TripsView: View {
     @ObservedObject var viewModel: TripsViewModel
+    @Binding var selectedCreatedRecap: CreatedRecapBlog?
+    @EnvironmentObject private var createdRecapStore: CreatedRecapBlogStore
     @AppStorage("blogify.skipSelectPhotosIntro") private var skipSelectPhotosIntro = false
     @State private var selectedTrip: TripDraft?
     @State private var createBlogFlowTrip: TripDraft?
@@ -20,8 +22,9 @@ struct TripsView: View {
     /// Latch state for the drag gesture: true = we are pulling the sheet; false = we are scrolling the list; nil = undetermined (start of gesture).
     @State private var isSheetGestureValid: Bool? = nil
 
-    init(viewModel: TripsViewModel) {
+    init(viewModel: TripsViewModel, selectedCreatedRecap: Binding<CreatedRecapBlog?>) {
         _viewModel = ObservedObject(wrappedValue: viewModel)
+        _selectedCreatedRecap = selectedCreatedRecap
     }
 
     private var shouldShowSelectPhotosIntro: Bool {
@@ -46,6 +49,12 @@ struct TripsView: View {
                 mainContent
             }
         }
+        .navigationDestination(item: $selectedCreatedRecap) { recap in
+            RecapBlogPageView(
+                blogId: recap.sourceTripId,
+                initialTrip: CreatedRecapBlogStore.shared.tripDraft(for: recap.sourceTripId)
+            )
+        }
         .navigationDestination(item: $selectedTrip) { trip in
             TripDayPickerView(
                 trip: viewModel.tripForPicker(trip),
@@ -65,6 +74,12 @@ struct TripsView: View {
             FindMoreTripsSheet(viewModel: viewModel)
         }
         .onAppear { viewModel.onAppear() }
+        .onChange(of: selectedCreatedRecap) { old, new in
+            if new == nil && createdRecapStore.pendingRecapCreated {
+                createdRecapStore.pendingRecapCreated = false
+                // Banner removed — shown in RecapBlogPageView on first save
+            }
+        }
     }
 
     private static let listHorizontalPadding: CGFloat = 20
@@ -73,7 +88,7 @@ struct TripsView: View {
     /// Scroll content minY >= this (in sheet space) means user is at top; then pull-down closes the sheet.
     private static let scrollAtTopTolerance: CGFloat = 10
     /// Collapsed snap = this fraction of screen height (map revealed).
-    private static let collapsedFraction: CGFloat = 0.42
+    private static let collapsedFraction: CGFloat = 0.85
 
     private struct ScrollContentMinYKey: PreferenceKey {
         static var defaultValue: CGFloat = 0
@@ -122,138 +137,273 @@ struct TripsView: View {
 
     private var mainContent: some View {
         GeometryReader { geometry in
-            let collapsedSnap = geometry.size.height * Self.collapsedFraction
-            let isScrollLocked = sheetOffset > Self.scrollLockThreshold
-
-            ZStack(alignment: .top) {
-                // Map behind the list (full screen)
-                TripsMapView(
-                    trips: viewModel.visibleDraftTrips,
-                    mapPosition: $mapPosition,
-                    onTripTapped: { trip in
-                        createBlogFlowTrip = trip
-                    }
-                )
-                .ignoresSafeArea(edges: .top)
-                .onAppear {
-                    if mapPosition == .automatic, !viewModel.visibleDraftTrips.isEmpty {
-                        let coords = viewModel.visibleDraftTrips.compactMap(\.centerCoordinate)
-                        let latestCoord = viewModel.visibleDraftTripsNewestFirst.first.flatMap(\.centerCoordinate)
-                        if !coords.isEmpty, let region = Self.regionFittingCoordinates(coords, latestCoord: latestCoord) {
-                            mapPosition = .region(region)
-                        }
-                    }
-                }
-
-                // List sheet: grabber + scroll list + Find More button
-                VStack(spacing: 0) {
-                    // Grabber handle
-                    RoundedRectangle(cornerRadius: 2.5)
-                        .fill(Color.white.opacity(0.4))
-                        .frame(width: 36, height: 5)
-                        .padding(.top, 8)
-                        .padding(.bottom, 4)
-
-                    ScrollView(.vertical, showsIndicators: true) {
-                        VStack(alignment: .leading, spacing: 0) {
-                            myDraftsSection
-                            readyToStartSection
-                            Spacer(minLength: 100)
-                        }
-                        .background(
-                            GeometryReader { g in
-                                Color.clear.preference(
-                                    key: ScrollContentMinYKey.self,
-                                    value: g.frame(in: .named("sheetScroll")).minY
-                                )
-                            }
-                        )
-                    }
-                    .coordinateSpace(name: "sheetScroll")
-                    .scrollBounceBehavior(.basedOnSize)
-                    .scrollDisabled(isScrollLocked)
-                    .onPreferenceChange(ScrollContentMinYKey.self) { scrollContentMinY = $0 }
-
-                    findMoreTripsButton
-                }
-                .padding(.horizontal, Self.listHorizontalPadding)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .background(Color.black)
-                .clipShape(RoundedRectangle(cornerRadius: 20))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 20)
-                        .stroke(Color.white.opacity(0.08), lineWidth: 1)
-                        .ignoresSafeArea()
-                )
-                .offset(y: sheetOffset)
-                .animation(.interactiveSpring(response: 0.35, dampingFraction: 0.86), value: sheetOffset)
-                .simultaneousGesture(
-                    DragGesture(minimumDistance: 8)
-                        .onChanged { value in
-                            // Latching logic: decide intent at the start of the gesture
-                            if isSheetGestureValid == nil {
-                                let atTop = scrollContentMinY >= -Self.scrollAtTopTolerance
-                                // Valid if already pulled down OR at the top of the list
-                                isSheetGestureValid = (sheetOffset > 0) || atTop
-                            }
-                            
-                            guard isSheetGestureValid == true else { return }
-
-                            // If we started at top but drag UP (scroll down), clamp to 0. 
-                            // If we started at top and drag DOWN (pull release), move sheet.
-                            // If we started with sheet open, move sheet.
-                            
-                            let proposed = dragStartSheetOffset + value.translation.height
-                            // Only allow pulling down (positive offset)
-                            sheetOffset = min(collapsedSnap, max(0, proposed))
-                        }
-                        .onEnded { value in
-                            defer {
-                                isSheetGestureValid = nil
-                                dragStartSheetOffset = sheetOffset
-                            }
-                            
-                            guard isSheetGestureValid == true else { return }
-                            
-                            let velocity = value.predictedEndTranslation.height - value.translation.height
-                            let mid = collapsedSnap / 2
-                            
-                            if velocity < -50 || (sheetOffset < mid && velocity <= 0) {
-                                withAnimation(.spring(response: 0.35, dampingFraction: 0.86)) {
-                                    sheetOffset = 0
-                                }
-                            } else if velocity > 50 || sheetOffset >= mid {
-                                withAnimation(.spring(response: 0.35, dampingFraction: 0.86)) {
-                                    sheetOffset = collapsedSnap
-                                }
-                            }
-                        }
-                )
-                .onChange(of: sheetOffset) { _, newValue in
-                    if newValue == 0 {
-                        dragStartSheetOffset = 0
-                    } else if abs(newValue - collapsedSnap) < 1 {
-                        dragStartSheetOffset = collapsedSnap
-                    }
-                }
-            }
-            .onAppear {
-                dragStartSheetOffset = sheetOffset
-            }
-            .onChange(of: geometry.size) { _, _ in
-                // Keep sheet at valid offset when size changes (e.g. rotation)
-                let newCollapsed = geometry.size.height * Self.collapsedFraction
-                if sheetOffset > 0 && sheetOffset >= newCollapsed - 1 {
-                    sheetOffset = newCollapsed
-                    dragStartSheetOffset = newCollapsed
-                }
-            }
+            buildMainContentBody(geometry: geometry)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color.black)
         .navigationTitle("Trips")
         .navigationBarTitleDisplayMode(.inline)
         .preferredColorScheme(.dark)
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Button {
+                    viewModel.openFindMoreSheet()
+                } label: {
+                    Image(systemName: "sparkle.magnifyingglass")
+                        .font(.body)
+                        .foregroundColor(.white)
+                }
+            }
+        }
+        .onChange(of: selectedCreatedRecap) { old, new in
+            if new == nil && createdRecapStore.pendingRecapCreated {
+                createdRecapStore.pendingRecapCreated = false
+                // Banner removed — shown in RecapBlogPageView on first save
+            }
+        }
+        .overlay {
+            if createdRecapStore.showDraftSavedToast {
+                draftSavedToast
+            }
+        }
+        .onChange(of: createdRecapStore.showDraftSavedToast) { _, show in
+            if show {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 5) {
+                    withAnimation {
+                        createdRecapStore.showDraftSavedToast = false
+                    }
+                }
+            }
+        }
+    }
+
+    private func buildMainContentBody(geometry: GeometryProxy) -> some View {
+        let collapsedSnap = geometry.size.height * Self.collapsedFraction
+        let isScrollLocked = sheetOffset > Self.scrollLockThreshold
+
+        return ZStack(alignment: .top) {
+            mapViewLayer
+            
+            sheetLayer(collapsedSnap: collapsedSnap, isScrollLocked: isScrollLocked)
+        }
+        .onAppear {
+            dragStartSheetOffset = sheetOffset
+        }
+        .onChange(of: geometry.size) { _, _ in
+            // Keep sheet at valid offset when size changes (e.g. rotation)
+            let newCollapsed = geometry.size.height * Self.collapsedFraction
+            if sheetOffset > 0 && sheetOffset >= newCollapsed - 1 {
+                sheetOffset = newCollapsed
+                dragStartSheetOffset = newCollapsed
+            }
+        }
+    }
+
+    private var mapViewLayer: some View {
+        TripsMapView(
+            trips: viewModel.visibleDraftTrips,
+            mapPosition: $mapPosition,
+            onTripTapped: { trip in
+                createBlogFlowTrip = trip
+            }
+        )
+        .ignoresSafeArea(edges: .top)
+        .onAppear {
+            if mapPosition == .automatic, !viewModel.visibleDraftTrips.isEmpty {
+                let coords = viewModel.visibleDraftTrips.compactMap(\.centerCoordinate)
+                let latestCoord = viewModel.visibleDraftTripsNewestFirst.first.flatMap(\.centerCoordinate)
+                if !coords.isEmpty, let region = Self.regionFittingCoordinates(coords, latestCoord: latestCoord) {
+                    mapPosition = .region(region)
+                }
+            }
+        }
+    }
+
+    private func sheetLayer(collapsedSnap: CGFloat, isScrollLocked: Bool) -> some View {
+        VStack(spacing: 0) {
+            // Grabber handle
+            RoundedRectangle(cornerRadius: 2.5)
+                .fill(Color.white.opacity(0.4))
+                .frame(width: 36, height: 5)
+                .padding(.top, 8)
+                .padding(.bottom, 4)
+
+            ScrollView(.vertical, showsIndicators: true) {
+                VStack(alignment: .leading, spacing: 0) {
+                    myDraftsSection
+                    readyToStartSection
+                    Spacer(minLength: 100)
+                }
+                .background(
+                    GeometryReader { g in
+                        Color.clear.preference(
+                            key: ScrollContentMinYKey.self,
+                            value: g.frame(in: .named("sheetScroll")).minY
+                        )
+                    }
+                )
+            }
+            .coordinateSpace(name: "sheetScroll")
+            .scrollBounceBehavior(.basedOnSize)
+            .scrollDisabled(isScrollLocked)
+            .onPreferenceChange(ScrollContentMinYKey.self) { scrollContentMinY = $0 }
+
+            findMoreTripsButton
+        }
+        .padding(.horizontal, Self.listHorizontalPadding)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color.black)
+        .clipShape(RoundedRectangle(cornerRadius: 20))
+        .overlay(
+            RoundedRectangle(cornerRadius: 20)
+                .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                .ignoresSafeArea()
+        )
+        .offset(y: sheetOffset)
+        .animation(.interactiveSpring(response: 0.35, dampingFraction: 0.86), value: sheetOffset)
+        .simultaneousGesture(
+            DragGesture(minimumDistance: 8)
+                .onChanged { value in
+                    // Latching logic: decide intent at the start of the gesture
+                    if isSheetGestureValid == nil {
+                        let atTop = scrollContentMinY >= -Self.scrollAtTopTolerance
+                        // Valid if already pulled down OR at the top of the list
+                        isSheetGestureValid = (sheetOffset > 0) || atTop
+                    }
+                    
+                    guard isSheetGestureValid == true else { return }
+
+                    // If we started at top but drag UP (scroll down), clamp to 0. 
+                    // If we started at top and drag DOWN (pull release), move sheet.
+                    // If we started with sheet open, move sheet.
+                    
+                    let proposed = dragStartSheetOffset + value.translation.height
+                    // Only allow pulling down (positive offset)
+                    sheetOffset = min(collapsedSnap, max(0, proposed))
+                }
+                .onEnded { value in
+                    defer {
+                        isSheetGestureValid = nil
+                        dragStartSheetOffset = sheetOffset
+                    }
+                    
+                    guard isSheetGestureValid == true else { return }
+                    
+                    let velocity = value.predictedEndTranslation.height - value.translation.height
+                    let mid = collapsedSnap / 2
+                    
+                    if velocity < -50 || (sheetOffset < mid && velocity <= 0) {
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.86)) {
+                            sheetOffset = 0
+                        }
+                    } else if velocity > 50 || sheetOffset >= mid {
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.86)) {
+                            sheetOffset = collapsedSnap
+                        }
+                    }
+                }
+        )
+        .onChange(of: sheetOffset) { _, newValue in
+            if newValue == 0 {
+                dragStartSheetOffset = 0
+            } else if abs(newValue - collapsedSnap) < 1 {
+                dragStartSheetOffset = collapsedSnap
+            }
+        }
+    }
+
+
+    
+    private var draftSavedToast: some View {
+        ZStack(alignment: .bottom) {
+            Color.black.opacity(0.5)
+                .ignoresSafeArea()
+                .onTapGesture {
+                    withAnimation { createdRecapStore.showDraftSavedToast = false }
+                }
+
+            HStack(spacing: 12) {
+                Image(systemName: "checkmark.circle.fill")
+                    .font(.title3)
+                    .foregroundColor(.green)
+                Text("Saved as draft")
+                    .font(.subheadline)
+                    .fontWeight(.semibold)
+                    .foregroundColor(.white)
+                Spacer()
+                Button {
+                    withAnimation { createdRecapStore.showDraftSavedToast = false }
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.caption)
+                        .foregroundColor(.white.opacity(0.6))
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+            .background(Color(white: 0.15))
+            .clipShape(Capsule())
+            .shadow(color: .black.opacity(0.3), radius: 10, y: 5)
+            .padding(.horizontal, 24)
+            .padding(.bottom, 20)
+        }
+        .zIndex(100)
+    }
+
+    /// Success notification card: icon, title, "Tap to view", optional dismiss. Auto-dismisses after 6s; tap opens latest blog.
+    private var recapCreatedBanner: some View {
+        HStack(spacing: 14) {
+            Image(systemName: "checkmark.circle.fill")
+                .font(.title2)
+                .foregroundStyle(
+                    LinearGradient(
+                        colors: [Color(red: 0.2, green: 0.7, blue: 1), Color(red: 0.3, green: 0.5, blue: 1)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Your recap blog is ready!")
+                    .font(.subheadline)
+                    .fontWeight(.semibold)
+                    .foregroundColor(.white)
+                Text("Available in your Profile")
+                    .font(.caption)
+                    .foregroundColor(.white.opacity(0.75))
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            Button {
+                createdRecapStore.dismissRecapCreatedBanner()
+            } label: {
+                Image(systemName: "xmark.circle.fill")
+                .font(.title3)
+                .foregroundStyle(.white.opacity(0.5))
+                .symbolRenderingMode(.hierarchical)
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 14)
+        .background(
+            RoundedRectangle(cornerRadius: 14)
+                .fill(.ultraThinMaterial)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 14)
+                        .stroke(Color.white.opacity(0.12), lineWidth: 1)
+                )
+        )
+        .padding(.horizontal, 20)
+        .padding(.top, 8)
+        .onTapGesture {
+            if let latest = createdRecapStore.recents.first {
+                selectedCreatedRecap = latest
+            }
+            createdRecapStore.dismissRecapCreatedBanner()
+        }
+        .onAppear {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 6) {
+                createdRecapStore.dismissRecapCreatedBanner()
+            }
+        }
     }
 
     @ViewBuilder
@@ -562,6 +712,9 @@ struct TripCoverImage: View {
 
 #Preview {
     NavigationStack {
-        TripsView(viewModel: TripsViewModel(createdRecapStore: CreatedRecapBlogStore.shared))
+        TripsView(
+            viewModel: TripsViewModel(createdRecapStore: CreatedRecapBlogStore.shared),
+            selectedCreatedRecap: .constant(nil)
+        )
     }
 }

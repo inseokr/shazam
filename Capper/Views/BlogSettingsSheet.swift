@@ -10,10 +10,12 @@ struct BlogSettingsSheet: View {
     @Binding var draft: RecapBlogDetail
     var onSave: () -> Void
     var onEditMode: (() -> Void)? = nil
+    var onDelete: () -> Void
     @Environment(\.dismiss) private var dismiss
 
     @State private var showTitleChange = false
     @State private var showCoverChange = false
+    @State private var showDeleteConfirmation = false
 
     var body: some View {
         NavigationStack {
@@ -29,6 +31,9 @@ struct BlogSettingsSheet: View {
                     } label: {
                         Label("Change Cover Photo", systemImage: "photo")
                     }
+                }
+
+                Section {
                     if onEditMode != nil {
                         Button {
                             onEditMode?()
@@ -37,12 +42,18 @@ struct BlogSettingsSheet: View {
                             Label("Edit Mode", systemImage: "pencil")
                         }
                     }
+                    
+                    Button(role: .destructive) {
+                        showDeleteConfirmation = true
+                    } label: {
+                        Label("Delete Blog", systemImage: "trash")
+                    }
                 }
             }
             .navigationTitle("Blog Settings")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
+                ToolbarItem(placement: .confirmationAction) {
                     Button("Done") {
                         onSave()
                         dismiss()
@@ -59,6 +70,15 @@ struct BlogSettingsSheet: View {
                     showCoverChange = false
                 }
             }
+            .alert("Delete Blog?", isPresented: $showDeleteConfirmation) {
+                Button("Delete", role: .destructive) {
+                    onDelete()
+                    dismiss()
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("Are you sure you want to delete this blog? It will be removed from your profile, but the trip will be available in Trips to customize again.")
+            }
             .preferredColorScheme(.dark)
         }
     }
@@ -69,13 +89,16 @@ struct BlogTitleChangeSheet: View {
     @Binding var title: String
     var onDone: () -> Void
     @Environment(\.dismiss) private var dismiss
+    @FocusState private var isFocused: Bool
+    @State private var tempTitle = ""
 
     var body: some View {
         NavigationStack {
             VStack(alignment: .leading, spacing: 16) {
-                TextField("Blog title", text: $title)
+                TextField("Blog title", text: $tempTitle)
                     .textFieldStyle(.roundedBorder)
                     .padding()
+                    .focused($isFocused)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .background(Color(uiColor: .systemGroupedBackground))
@@ -86,11 +109,16 @@ struct BlogTitleChangeSheet: View {
                     Button("Cancel") { dismiss() }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Save") {
+                    Button("Done") {
+                        title = tempTitle
                         onDone()
                         dismiss()
                     }
                 }
+            }
+            .onAppear {
+                tempTitle = title
+                isFocused = true
             }
             .preferredColorScheme(.dark)
         }

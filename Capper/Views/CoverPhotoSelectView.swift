@@ -196,6 +196,7 @@ struct CoverPhotoPickerView: View {
 struct BlogCoverPhotoPickerView: View {
     let photos: [RecapPhoto]
     @Binding var selectedIdentifier: String?
+    var saveButtonTitle: String = "Save"
     var onSave: () -> Void
 
     @Environment(\.dismiss) private var dismiss
@@ -248,7 +249,7 @@ struct BlogCoverPhotoPickerView: View {
                     Button("Cancel") { dismiss() }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Save") {
+                    Button(saveButtonTitle) {
                         selectedIdentifier = pendingSelection ?? selectedIdentifier
                         onSave()
                     }

@@ -84,7 +84,7 @@ struct MyBlogsProfileView: View {
         .preferredColorScheme(.dark)
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
-                Button("View All") {
+                Button("Recent") {
                     showViewAll = true
                 }
                 .foregroundColor(.white)

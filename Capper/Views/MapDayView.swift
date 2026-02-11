@@ -49,6 +49,23 @@ struct MapDayView: View {
                     )
                 }
             }
+            
+            // Mileage markers between points
+            ForEach(0..<markers.count - 1, id: \.self) { i in
+                let start = markers[i]
+                let end = markers[i+1]
+                if let dist = distanceString(from: start.coordinate, to: end.coordinate) {
+                    Annotation("", coordinate: midPoint(from: start.coordinate, to: end.coordinate)) {
+                        Text(dist)
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 3)
+                            .background(Capsule().fill(Color.black.opacity(0.6)))
+                            .shadow(radius: 1)
+                    }
+                }
+            }
         }
         .frame(height: height)
         .clipShape(RoundedRectangle(cornerRadius: 12))
@@ -84,12 +101,25 @@ struct MapDayView: View {
                 span: MKCoordinateSpan(latitudeDelta: 0.02, longitudeDelta: 0.02)
             )
         }
+        
+        // If a specific place is focused, center on it.
         if let focusId = focusedPlaceId, let marker = markers.first(where: { $0.id == focusId }) {
             return MKCoordinateRegion(
                 center: marker.coordinate,
                 span: MKCoordinateSpan(latitudeDelta: 0.0035, longitudeDelta: 0.0035)
             )
         }
+        
+        // Otherwise, center on the "Start" (first place) of the day.
+        // We use a moderate span to show context but focus on the start.
+        if let startMarker = markers.first {
+            return MKCoordinateRegion(
+                center: startMarker.coordinate,
+                span: MKCoordinateSpan(latitudeDelta: 0.05, longitudeDelta: 0.05)
+            )
+        }
+        
+        // Fallback (should be covered by startMarker check, but just in case)
         let lats = coords.map(\.latitude)
         let lons = coords.map(\.longitude)
         let minLat = lats.min()!
@@ -106,6 +136,21 @@ struct MapDayView: View {
             longitude: (minLon + maxLon) / 2
         )
         return MKCoordinateRegion(center: center, span: span)
+    }
+    private func distanceString(from: CLLocationCoordinate2D, to: CLLocationCoordinate2D) -> String? {
+         let loc1 = CLLocation(latitude: from.latitude, longitude: from.longitude)
+         let loc2 = CLLocation(latitude: to.latitude, longitude: to.longitude)
+         let distanceInMeters = loc2.distance(from: loc1)
+         let distanceInMiles = distanceInMeters / 1609.34
+         if distanceInMiles < 0.1 { return nil }
+         return String(format: "%.1f mi", distanceInMiles)
+    }
+
+    private func midPoint(from: CLLocationCoordinate2D, to: CLLocationCoordinate2D) -> CLLocationCoordinate2D {
+        CLLocationCoordinate2D(
+            latitude: (from.latitude + to.latitude) / 2,
+            longitude: (from.longitude + to.longitude) / 2
+        )
     }
 }
 
@@ -164,8 +209,12 @@ private struct PlaceMarkerView: View {
                 .foregroundColor(.white)
                 .lineLimit(2)
                 .multilineTextAlignment(.center)
-                .shadow(color: .black.opacity(0.6), radius: 1)
-                .frame(maxWidth: 76)
+                .padding(.horizontal, 6)
+                .padding(.vertical, 4)
+                .background(.ultraThinMaterial)
+                .background(Color.black.opacity(0.75))
+                .cornerRadius(6)
+                .frame(maxWidth: 90)
 
             Text(orderLabel)
                 .font(.system(size: 9, weight: .semibold))

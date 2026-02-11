@@ -50,6 +50,10 @@ final class CreatedRecapBlogStore: ObservableObject {
     @Published private(set) var recents: [CreatedRecapBlog] = []
     /// When true, landing shows "Recap Blog has been created!" banner; clear after 5–7 sec.
     @Published var showRecapCreatedBanner = false
+    /// Set to true when a blog is created. Consumed by the view (TripsView) to trigger the banner at the appropriate time.
+    @Published var pendingRecapCreated = false
+    /// Set to true when a draft is saved on back navigation. Consumed by TripsView to show a toast.
+    @Published var showDraftSavedToast = false
     private var tripDraftsBySourceId: [UUID: TripDraft] = [:]
     /// Persisted editable blog details; Save in RecapBlogPageView writes here.
     private var blogDetailsBySourceId: [UUID: RecapBlogDetail] = [:]
@@ -76,7 +80,9 @@ final class CreatedRecapBlogStore: ObservableObject {
         )
         tripDraftsBySourceId[trip.id] = trip
         recents.insert(blog, at: 0)
-        showRecapCreatedBanner = true
+        pendingRecapCreated = true
+        // Do not show banner immediately; let the UI trigger it when ready (e.g. after backing out to Trips).
+        // showRecapCreatedBanner = true
     }
 
     /// Dismiss the "Recap Blog has been created!" banner (called after auto-hide or tap).
@@ -160,7 +166,8 @@ final class CreatedRecapBlogStore: ObservableObject {
     }
 
     /// Persist edited blog detail. Call when user taps Save on RecapBlogPageView. Updates the corresponding recents entry (title, country, cover, lastEditedAt).
-    func saveBlogDetail(_ detail: RecapBlogDetail) {
+    /// - Parameter asDraft: If true, preserves the existing lastEditedAt (keeping it nil if it was a draft), effectively saving content but not marking it as "Edited/Published".
+    func saveBlogDetail(_ detail: RecapBlogDetail, asDraft: Bool = false) {
         blogDetailsBySourceId[detail.id] = detail
         guard let idx = recents.firstIndex(where: { $0.sourceTripId == detail.id }) else { return }
         let old = recents[idx]
@@ -175,10 +182,18 @@ final class CreatedRecapBlogStore: ObservableObject {
             selectedPhotoCount: old.selectedPhotoCount,
             countryName: country,
             tripDateRangeText: old.tripDateRangeText,
-            lastEditedAt: Date(),
+            lastEditedAt: asDraft ? old.lastEditedAt : Date(),
             tripStartDate: old.tripStartDate,
             tripEndDate: old.tripEndDate
         )
+    }
+
+    /// Deletes a created blog. The underlying trip draft remains in TripDraftStore (or is re-discovered by scan) and will reappear in the Trips list because hasCreatedBlog(id) will return false.
+    func deleteBlog(sourceTripId: UUID) {
+        recents.removeAll { $0.sourceTripId == sourceTripId }
+        blogDetailsBySourceId.removeValue(forKey: sourceTripId)
+        // If there was a pending banner for this blog (unlikely but possible), clear it.
+        if pendingRecapCreated { pendingRecapCreated = false }
     }
 
     /// Build RecapBlogDetail from a TripDraft (selected photos only, clustered into place stops). Use when no saved detail exists.

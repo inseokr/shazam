@@ -29,9 +29,9 @@ struct LandingView: View {
             VStack(spacing: 0) {
                 HStack {
                     Button {
-                        showProfile = true
+                        showSettings = true
                     } label: {
-                        Image(systemName: "person.circle.fill")
+                        Image(systemName: "gearshape.fill")
                             .font(.title2)
                             .foregroundColor(.white)
                     }
@@ -42,9 +42,9 @@ struct LandingView: View {
                         .foregroundColor(.white)
                     Spacer()
                     Button {
-                        showSettings = true
+                        showProfile = true
                     } label: {
-                        Image(systemName: "gearshape.fill")
+                        Image(systemName: "person.crop.circle")
                             .font(.title2)
                             .foregroundColor(.white)
                     }
@@ -69,16 +69,6 @@ struct LandingView: View {
         .sheet(isPresented: $showSettings) {
             SettingsView()
         }
-        .overlay(alignment: .top) {
-            if createdRecapStore.showRecapCreatedBanner {
-                recapCreatedBanner
-                    .transition(.asymmetric(
-                        insertion: .move(edge: .top).combined(with: .opacity),
-                        removal: .move(edge: .top).combined(with: .opacity)
-                    ))
-            }
-        }
-        .animation(.spring(response: 0.4, dampingFraction: 0.8), value: createdRecapStore.showRecapCreatedBanner)
     }
 
     /// Success notification card: icon, title, "Tap to view", optional dismiss. Auto-dismisses after 6s; tap opens latest blog.
@@ -228,9 +218,22 @@ private struct CreatedRecapCard: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            TripCoverImage(theme: recap.coverImageName, coverAssetIdentifier: recap.coverAssetIdentifier)
-                .frame(width: 80, height: 80)
-                .clipShape(RoundedRectangle(cornerRadius: 10))
+            ZStack(alignment: .bottomLeading) {
+                TripCoverImage(theme: recap.coverImageName, coverAssetIdentifier: recap.coverAssetIdentifier)
+                    .frame(width: 80, height: 80)
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                if recap.lastEditedAt == nil {
+                    Text("Draft")
+                        .font(.caption2)
+                        .fontWeight(.semibold)
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(Color.black.opacity(0.6))
+                        .cornerRadius(4)
+                        .padding(4)
+                }
+            }
 
             VStack(alignment: .leading, spacing: 4) {
                 Text(recap.title)
@@ -355,9 +358,22 @@ struct AllRecentsSheet: View {
                         dismiss()
                     } label: {
                         HStack(spacing: 14) {
-                            TripCoverImage(theme: recap.coverImageName, coverAssetIdentifier: recap.coverAssetIdentifier)
-                                .frame(width: 60, height: 60)
-                                .clipShape(RoundedRectangle(cornerRadius: 8))
+                            ZStack(alignment: .bottomLeading) {
+                                TripCoverImage(theme: recap.coverImageName, coverAssetIdentifier: recap.coverAssetIdentifier)
+                                    .frame(width: 60, height: 60)
+                                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                                if recap.lastEditedAt == nil {
+                                    Text("Draft")
+                                        .font(.caption2)
+                                        .fontWeight(.semibold)
+                                        .foregroundColor(.white)
+                                        .padding(.horizontal, 5)
+                                        .padding(.vertical, 2)
+                                        .background(Color.black.opacity(0.6))
+                                        .cornerRadius(4)
+                                        .padding(3)
+                                }
+                            }
                             VStack(alignment: .leading, spacing: 4) {
                                 Text(recap.title)
                                     .font(.headline)

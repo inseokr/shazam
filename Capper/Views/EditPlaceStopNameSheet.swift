@@ -4,19 +4,59 @@
 //
 
 import SwiftUI
+import MapKit
 
 struct EditPlaceStopNameSheet: View {
     @Binding var placeTitle: String
+    var location: CLLocationCoordinate2D?
     var onSave: (String) -> Void
     @Environment(\.dismiss) private var dismiss
 
+    @StateObject private var searchViewModel = PlaceSearchViewModel()
     @State private var editedTitle: String = ""
 
     var body: some View {
         NavigationStack {
-            Form {
-                TextField("Place name", text: $editedTitle)
-                    .autocorrectionDisabled()
+            List {
+                Section {
+                    TextField("Place name", text: $editedTitle)
+                        .autocorrectionDisabled()
+                        .onChange(of: editedTitle) { _, newValue in
+                            searchViewModel.query = newValue
+                        }
+                }
+
+                if !searchViewModel.suggestions.isEmpty {
+                    Section("Nearby Suggestions") {
+                        ForEach(searchViewModel.suggestions, id: \.self) { suggestion in
+                            Button {
+                                editedTitle = suggestion.title
+                                searchViewModel.suggestions = [] // Clear suggestions
+                            } label: {
+                                VStack(alignment: .leading) {
+                                    Text(suggestion.title)
+                                        .font(.body)
+                                        .foregroundColor(.primary)
+                                    Text(suggestion.subtitle)
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if !editedTitle.isEmpty {
+                    Section {
+                        Link(destination: URL(string: "https://www.google.com/search?q=\(editedTitle.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? "")")!) {
+                            HStack {
+                                Image(systemName: "magnifyingglass")
+                                Text("Search on Google")
+                            }
+                            .foregroundColor(.blue)
+                        }
+                    }
+                }
             }
             .navigationTitle("Edit Name")
             .navigationBarTitleDisplayMode(.inline)
@@ -37,6 +77,7 @@ struct EditPlaceStopNameSheet: View {
             }
             .onAppear {
                 editedTitle = placeTitle
+                searchViewModel.setBiasLocation(location)
             }
             .preferredColorScheme(.dark)
         }
