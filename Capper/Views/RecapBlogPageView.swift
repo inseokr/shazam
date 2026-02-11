@@ -24,6 +24,7 @@ struct RecapBlogPageView: View {
     @State private var showShareSheet = false
     @State private var showEditPhotoFlow = false
     @State private var fullScreenMapDay: RecapBlogDay?
+    @State private var showTitleChange = false
     @State private var placePhotoModalItem: PlacePhotoModalItem?
 
     init(blogId: UUID, initialTrip: TripDraft?) {
@@ -84,6 +85,11 @@ struct RecapBlogPageView: View {
                 showBlogSettings = false
                 isEditMode = true
             })
+        }
+        .sheet(isPresented: $showTitleChange) {
+            BlogTitleChangeSheet(title: $draft.title) {
+                showTitleChange = false
+            }
         }
         .onAppear {
             loadDraftIfNeeded()
@@ -184,16 +190,26 @@ struct RecapBlogPageView: View {
         .background(Color.black)
     }
 
-    /// Blog title placed between day filter and map; scrolls with content.
+    /// Blog title placed between day filter and map; scrolls with content. Tappable to rename.
     private var blogTitleView: some View {
-        Text(draft.title)
-            .font(.title2)
-            .fontWeight(.bold)
-            .foregroundColor(.white)
+        Button {
+            showTitleChange = true
+        } label: {
+            HStack(spacing: 6) {
+                Text(draft.title)
+                    .font(.title2)
+                    .fontWeight(.bold)
+                    .foregroundColor(.white)
+                Image(systemName: "pencil")
+                    .font(.caption)
+                    .foregroundColor(.white.opacity(0.5))
+            }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, 16)
             .padding(.top, 12)
             .padding(.bottom, 8)
+        }
+        .buttonStyle(.plain)
     }
 
     /// Day filter fixed at top; scrollable content (map + timeline) sits below it.
