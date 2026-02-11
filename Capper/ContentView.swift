@@ -34,7 +34,7 @@ struct ContentView: View {
             }
             // Only push from Landing if we are staying on Landing (not showing Trips)
             .navigationDestination(isPresented: Binding(
-                get: { selectedCreatedRecap != nil && !showTrips },
+                get: { selectedCreatedRecap != nil && !showTrips && !showProfile },
                 set: { if !$0 { selectedCreatedRecap = nil } }
             )) {
                 if let recap = selectedCreatedRecap {

@@ -311,7 +311,7 @@ struct TripsView: View {
     
     private var draftSavedToast: some View {
         ZStack(alignment: .bottom) {
-            Color.black.opacity(0.5)
+            Color.black.opacity(0.8)
                 .ignoresSafeArea()
                 .onTapGesture {
                     withAnimation { createdRecapStore.showDraftSavedToast = false }
@@ -319,10 +319,10 @@ struct TripsView: View {
 
             HStack(spacing: 12) {
                 Image(systemName: "checkmark.circle.fill")
-                    .font(.title3)
+                    .font(.title2)
                     .foregroundColor(.green)
                 Text("Saved as draft")
-                    .font(.subheadline)
+                    .font(.headline)
                     .fontWeight(.semibold)
                     .foregroundColor(.white)
                 Spacer()
@@ -330,17 +330,19 @@ struct TripsView: View {
                     withAnimation { createdRecapStore.showDraftSavedToast = false }
                 } label: {
                     Image(systemName: "xmark")
-                        .font(.caption)
-                        .foregroundColor(.white.opacity(0.6))
+                        .font(.body)
+                        .foregroundColor(.white.opacity(0.8))
+                        .padding(8)
+                        .contentShape(Rectangle())
                 }
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
+            .padding(.horizontal, 20)
+            .padding(.vertical, 20)
             .background(Color(white: 0.15))
-            .clipShape(Capsule())
-            .shadow(color: .black.opacity(0.3), radius: 10, y: 5)
+            .clipShape(RoundedRectangle(cornerRadius: 16))
+            .shadow(color: .black.opacity(0.5), radius: 20, y: 10)
             .padding(.horizontal, 24)
-            .padding(.bottom, 20)
+            .padding(.bottom, 40)
         }
         .zIndex(100)
         .transition(.opacity)
@@ -432,8 +434,12 @@ struct TripsView: View {
                         .fontWeight(.semibold)
                         .foregroundColor(.white.opacity(0.85))
                     ForEach(group.trips) { trip in
-                        TripDraftRow(trip: trip)
-                            .onTapGesture { createBlogFlowTrip = trip }
+                        Button {
+                            createBlogFlowTrip = trip
+                        } label: {
+                            TripDraftRow(trip: trip)
+                        }
+                        .buttonStyle(.plain)
                     }
                 }
             }
@@ -473,8 +479,12 @@ struct TripsView: View {
                             .fontWeight(.semibold)
                             .foregroundColor(.white.opacity(0.85))
                         ForEach(group.trips) { trip in
-                            TripDraftRow(trip: trip)
-                                .onTapGesture { createBlogFlowTrip = trip }
+                            Button {
+                                createBlogFlowTrip = trip
+                            } label: {
+                                TripDraftRow(trip: trip)
+                            }
+                            .buttonStyle(.plain)
                         }
                     }
                 }

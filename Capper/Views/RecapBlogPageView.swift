@@ -314,6 +314,7 @@ struct RecapBlogPageView: View {
                     .background(Color.black)
                 }
                 .background(Color.black)
+                .ignoresSafeArea(edges: .bottom)
                 .onChange(of: scrollToStopId) { _, newId in
                     guard let id = newId else { return }
                     withAnimation(.easeOut(duration: 0.25)) {
@@ -324,6 +325,7 @@ struct RecapBlogPageView: View {
                 
                 // Day Filter fixed at bottom
                 dayFilterSection
+                    .ignoresSafeArea(.keyboard)
                 
                 // Undo Overlay (Banner or Button)
                 if showUndoOverlay {
@@ -521,7 +523,11 @@ struct RecapBlogPageView: View {
             .padding(.vertical, 12)
         }
         .frame(maxWidth: .infinity)
-        .background(Color.black)
+        .background {
+            Rectangle()
+                .fill(.ultraThinMaterial.opacity(0.75))
+                .ignoresSafeArea(edges: .bottom)
+        }
         .fixedSize(horizontal: false, vertical: true)
     }
 

@@ -11,6 +11,9 @@ struct CreatingRecapView: View {
     @State private var assembledStep: Int = 0
     @State private var stepLabelIndex: Int = 0
     
+    // Background color animation state
+    @State private var backgroundColor: Color = .black
+    
     private let stepLabels = [
         "Analyzing photos...",
         "Grouping by location...",
@@ -21,7 +24,7 @@ struct CreatingRecapView: View {
 
     var body: some View {
         ZStack {
-            Color(uiColor: .systemGroupedBackground)
+            backgroundColor
                 .ignoresSafeArea()
 
             
@@ -105,6 +108,11 @@ struct CreatingRecapView: View {
     }
 
     private func startAnimations() {
+        // Animate background color to #050A30 (Deep Navy)
+        withAnimation(.easeInOut(duration: 4.0)) {
+            backgroundColor = Color(red: 5/255, green: 10/255, blue: 48/255)
+        }
+
         // Progress ring fills over ~1.8s
         withAnimation(.easeInOut(duration: 1.8)) {
             ringTrim = 1

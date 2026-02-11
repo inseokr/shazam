@@ -96,6 +96,12 @@ struct MyBlogsProfileView: View {
         .navigationDestination(isPresented: $showMyMap) {
             MyMapView(selectedCreatedRecap: $selectedCreatedRecap)
         }
+        .navigationDestination(item: $selectedCreatedRecap) { recap in
+            RecapBlogPageView(
+                blogId: recap.sourceTripId,
+                initialTrip: createdRecapStore.tripDraft(for: recap.sourceTripId)
+            )
+        }
         .sheet(isPresented: $showViewAll) {
             AllRecentsSheet(
                 createdRecapStore: createdRecapStore,
