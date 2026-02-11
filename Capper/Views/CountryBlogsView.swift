@@ -12,6 +12,7 @@ struct CountryBlogsView: View {
     @Binding var selectedBlog: CreatedRecapBlog?
     @EnvironmentObject private var createdRecapStore: CreatedRecapBlogStore
     @State private var localSelectedBlog: CreatedRecapBlog?
+    @State private var showMap = false
 
     private static let dateFormatter: DateFormatter = {
         let f = DateFormatter()
@@ -49,6 +50,22 @@ struct CountryBlogsView: View {
         .listStyle(.plain)
         .navigationTitle(displayCountryName(section.countryName))
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button {
+                    showMap = true
+                } label: {
+                    Image(systemName: "map")
+                }
+            }
+        }
+        .navigationDestination(isPresented: $showMap) {
+            CountryMapView(
+                countryName: section.countryName,
+                selectedCreatedRecap: $localSelectedBlog
+            )
+            .environmentObject(createdRecapStore)
+        }
         .navigationDestination(item: $localSelectedBlog) { recap in
             RecapBlogPageView(
                 blogId: recap.sourceTripId,

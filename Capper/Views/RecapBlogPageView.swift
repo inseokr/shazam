@@ -26,6 +26,9 @@ struct RecapBlogPageView: View {
     @State private var fullScreenMapDay: RecapBlogDay?
     @State private var showTitleChange = false
     @State private var placePhotoModalItem: PlacePhotoModalItem?
+    @State private var showUnsavedAlert = false
+    @State private var hasShownUnsavedAlert = false
+    @State private var showCoverPhotoPicker = false
 
     init(blogId: UUID, initialTrip: TripDraft?) {
         self.blogId = blogId
@@ -42,16 +45,27 @@ struct RecapBlogPageView: View {
                 mainContent
             }
         }
-        .navigationBarBackButtonHidden(false)
+        .navigationBarBackButtonHidden(isEditMode && !hasShownUnsavedAlert)
         .navigationTitle("Recap Blog")
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(.hidden, for: .navigationBar)
         .toolbar {
+            if isEditMode && !hasShownUnsavedAlert {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button {
+                        showUnsavedAlert = true
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "chevron.left")
+                                .font(.body.weight(.semibold))
+                        }
+                    }
+                }
+            }
             ToolbarItem(placement: .topBarTrailing) {
                 if isEditMode {
                     Button {
-                        saveDraft()
-                        isEditMode = false
+                        showCoverPhotoPicker = true
                     } label: {
                         Text("Save")
                             .font(.subheadline)
@@ -90,6 +104,25 @@ struct RecapBlogPageView: View {
             BlogTitleChangeSheet(title: $draft.title) {
                 showTitleChange = false
             }
+        }
+        .alert("Blog Not Saved", isPresented: $showUnsavedAlert) {
+            Button("Got it") {
+                hasShownUnsavedAlert = true
+                dismiss()
+            }
+        } message: {
+            Text("You haven't saved your blog yet. Save it to unlock your map routes and keep your edits.")
+        }
+        .sheet(isPresented: $showCoverPhotoPicker) {
+            BlogCoverPhotoPickerView(
+                photos: allIncludedPhotos,
+                selectedIdentifier: $draft.selectedCoverPhotoIdentifier,
+                onSave: {
+                    showCoverPhotoPicker = false
+                    saveDraft()
+                    isEditMode = false
+                }
+            )
         }
         .onAppear {
             loadDraftIfNeeded()
@@ -171,7 +204,9 @@ struct RecapBlogPageView: View {
                         Color.clear
                             .frame(height: Self.dayFilterApproxHeight)
                         blogTitleView
-                        mapOrPreviewCard
+                        if !isEditMode {
+                            mapOrPreviewCard
+                        }
                         timelineContent
                     }
                     .background(Color.black)
@@ -332,6 +367,11 @@ struct RecapBlogPageView: View {
         Task { @MainActor in
             draft = await createdRecapStore.buildBlogDetailAsync(from: trip)
         }
+    }
+
+    /// All included photos across all days/stops, for cover photo selection.
+    private var allIncludedPhotos: [RecapPhoto] {
+        draft.days.flatMap(\.placeStops).flatMap(\.photos).filter(\.isIncluded)
     }
 
     private var shareText: String {

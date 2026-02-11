@@ -191,6 +191,120 @@ struct CoverPhotoPickerView: View {
     }
 }
 
+/// Cover photo picker for the Recap Blog save flow. Uses RecapPhoto instead of MockPhoto.
+/// Big preview at top, horizontal 2-row grid at bottom, Save commits selection.
+struct BlogCoverPhotoPickerView: View {
+    let photos: [RecapPhoto]
+    @Binding var selectedIdentifier: String?
+    var onSave: () -> Void
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var pendingSelection: String?
+
+    private var displayIdentifier: String? {
+        pendingSelection ?? selectedIdentifier ?? photos.compactMap(\.localIdentifier).first
+    }
+
+    var body: some View {
+        NavigationStack {
+            GeometryReader { geo in
+                let topHeight = geo.size.height * 0.56
+                VStack(spacing: 0) {
+                    Group {
+                        if let id = displayIdentifier {
+                            AssetPhotoView(assetIdentifier: id, cornerRadius: 0, targetSize: CGSize(width: 800, height: 800))
+                        } else {
+                            RoundedRectangle(cornerRadius: 12)
+                                .fill(Color(white: 0.2))
+                                .overlay(Image(systemName: "photo").font(.largeTitle).foregroundColor(.secondary))
+                        }
+                    }
+                    .id(displayIdentifier ?? "")
+                    .frame(maxWidth: .infinity)
+                    .frame(height: topHeight)
+                    .clipped()
+                    .padding(.horizontal, 20)
+                    .padding(.top, 20)
+
+                    Text("Select a cover photo for your blog")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                        .padding(.top, 12)
+
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        blogCoverGridContent
+                    }
+                    .padding(.horizontal, 20)
+                    .padding(.top, 16)
+                    .frame(maxHeight: .infinity)
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(Color(uiColor: .systemGroupedBackground))
+            .navigationTitle("Cover Photo")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Save") {
+                        selectedIdentifier = pendingSelection ?? selectedIdentifier
+                        onSave()
+                    }
+                    .fontWeight(.semibold)
+                }
+            }
+            .preferredColorScheme(.dark)
+            .onAppear {
+                if pendingSelection == nil {
+                    pendingSelection = selectedIdentifier ?? photos.compactMap(\.localIdentifier).first
+                }
+            }
+        }
+    }
+
+    private var blogCoverGridContent: some View {
+        let itemSize: CGFloat = 100
+        let spacing: CGFloat = 10
+        let rowCount = 2
+        let colCount = (photos.count + rowCount - 1) / rowCount
+
+        return HStack(alignment: .top, spacing: spacing) {
+            ForEach(0..<colCount, id: \.self) { col in
+                VStack(spacing: spacing) {
+                    ForEach(0..<rowCount, id: \.self) { row in
+                        let idx = col * rowCount + row
+                        if idx < photos.count {
+                            let photo = photos[idx]
+                            let id = photo.localIdentifier
+                            let isSelected = (id == displayIdentifier)
+                            Button {
+                                if let id = id {
+                                    pendingSelection = id
+                                }
+                            } label: {
+                                RecapPhotoThumbnail(photo: photo, cornerRadius: 8, showIcon: false)
+                                    .frame(width: itemSize, height: itemSize)
+                                    .clipped()
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 8)
+                                            .stroke(isSelected ? Color.blue : Color.clear, lineWidth: 3)
+                                    )
+                            }
+                            .buttonStyle(.plain)
+                        } else {
+                            Color.clear
+                                .frame(width: itemSize, height: itemSize)
+                        }
+                    }
+                }
+            }
+        }
+        .padding(.vertical, 8)
+    }
+}
+
 #Preview {
     CoverPhotoSelectView(
         trip: TripDraft(title: "Test", dateRangeText: "Jan 1", days: [], coverImageName: "photo", isScannedFromDefaultRange: true),

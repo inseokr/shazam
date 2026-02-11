@@ -114,7 +114,7 @@ struct TripAnnotationView: View {
     private static let height: CGFloat = 72
 
     var body: some View {
-        ZStack {
+        VStack(spacing: 4) {
             TripCoverImage(
                 theme: blog.coverImageName,
                 coverAssetIdentifier: blog.coverAssetIdentifier
@@ -126,6 +126,64 @@ struct TripAnnotationView: View {
                     .stroke(isSelected ? Color.white : Color.white.opacity(0.6), lineWidth: isSelected ? 3 : 1.5)
             )
             .shadow(color: .black.opacity(0.4), radius: 3, x: 0, y: 2)
+
+            Text(blog.title)
+                .font(.caption2)
+                .fontWeight(.medium)
+                .foregroundColor(.white)
+                .lineLimit(2)
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: 80)
+                .shadow(color: .black.opacity(0.5), radius: 1)
+        }
+    }
+}
+
+// MARK: - CountryMapView (map filtered to a single country)
+
+/// Map showing only trips for a specific country. Reached from CountryBlogsView toolbar.
+struct CountryMapView: View {
+    let countryName: String
+    @Binding var selectedCreatedRecap: CreatedRecapBlog?
+    @EnvironmentObject private var createdRecapStore: CreatedRecapBlogStore
+    @StateObject private var viewModel: ProfileMapViewModel
+    @State private var mapPosition: MapCameraPosition = .automatic
+
+    init(countryName: String, selectedCreatedRecap: Binding<CreatedRecapBlog?>) {
+        self.countryName = countryName
+        _selectedCreatedRecap = selectedCreatedRecap
+        _viewModel = StateObject(wrappedValue: ProfileMapViewModel(createdRecapStore: CreatedRecapBlogStore.shared))
+    }
+
+    var body: some View {
+        Map(position: $mapPosition) {
+            ForEach(viewModel.tripsWithCoordinates, id: \.blog.sourceTripId) { item in
+                Annotation("", coordinate: item.coordinate) {
+                    TripAnnotationView(
+                        blog: item.blog,
+                        isSelected: viewModel.selectedTripID == item.blog.sourceTripId
+                    )
+                    .onTapGesture {
+                        viewModel.selectTrip(item.blog.sourceTripId)
+                        selectedCreatedRecap = item.blog
+                    }
+                }
+            }
+        }
+        .mapStyle(.standard(elevation: .realistic))
+        .onMapCameraChange(frequency: .onEnd) { context in
+            viewModel.mapRegion = context.region
+        }
+        .ignoresSafeArea(edges: .bottom)
+        .navigationTitle(countryName)
+        .navigationBarTitleDisplayMode(.inline)
+        .preferredColorScheme(.dark)
+        .onAppear {
+            viewModel.selectCountry(countryName)
+            mapPosition = .region(viewModel.mapRegion)
+        }
+        .onChange(of: viewModel.mapRegionChangeCounter) { _, _ in
+            mapPosition = .region(viewModel.mapRegion)
         }
     }
 }

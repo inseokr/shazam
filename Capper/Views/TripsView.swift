@@ -80,7 +80,7 @@ struct TripsView: View {
         static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
     }
 
-    /// Returns a region that fits all coordinates with padding. Places the latest trip (first in newest-first order) in the top-center area by biasing the center south.
+    /// Returns a region that fits all coordinates with padding. Places the latest trip (first in newest-first order) in the center-top area of the map.
     private static func regionFittingCoordinates(
         _ coords: [CLLocationCoordinate2D],
         latestCoord: CLLocationCoordinate2D?
@@ -91,21 +91,33 @@ struct TripsView: View {
         let minLat = lats.min()!, maxLat = lats.max()!
         let minLon = lons.min()!, maxLon = lons.max()!
         let padding = 0.15
-        let latDelta = max(0.02, (maxLat - minLat) + padding)
         let lonDelta = max(0.02, (maxLon - minLon) + padding)
-        let centerLon = (minLon + maxLon) / 2
+        let centerLon: CLLocationDegrees
         let centerLat: CLLocationDegrees
-        if let _ = latestCoord, latDelta > 0 {
-            // Bias center south so the latest trip appears in the top ~35% of the map (top-center area).
-            let geometricCenterLat = (minLat + maxLat) / 2
-            centerLat = geometricCenterLat - (latDelta * 0.35)
+        if let latest = latestCoord {
+            // Position the latest trip at roughly the top 25% of the visible map.
+            // To do this, set the center south of the latest trip so it appears near the top.
+            let allSpanLat = max(0.02, (maxLat - minLat) + padding)
+            // Ensure the span is large enough to also show trips below the center
+            let distBelow = latest.latitude - minLat + padding / 2
+            // The latest trip should be at ~25% from the top → 75% of the span is below it
+            let neededSpan = max(allSpanLat, distBelow / 0.75)
+            let latDelta = neededSpan
+            centerLat = latest.latitude - (latDelta * 0.25)
+            centerLon = latest.longitude
+            return MKCoordinateRegion(
+                center: CLLocationCoordinate2D(latitude: centerLat, longitude: centerLon),
+                span: MKCoordinateSpan(latitudeDelta: latDelta, longitudeDelta: lonDelta)
+            )
         } else {
+            let latDelta = max(0.02, (maxLat - minLat) + padding)
             centerLat = (minLat + maxLat) / 2
+            centerLon = (minLon + maxLon) / 2
+            return MKCoordinateRegion(
+                center: CLLocationCoordinate2D(latitude: centerLat, longitude: centerLon),
+                span: MKCoordinateSpan(latitudeDelta: latDelta, longitudeDelta: lonDelta)
+            )
         }
-        return MKCoordinateRegion(
-            center: CLLocationCoordinate2D(latitude: centerLat, longitude: centerLon),
-            span: MKCoordinateSpan(latitudeDelta: latDelta, longitudeDelta: lonDelta)
-        )
     }
 
     private var mainContent: some View {
