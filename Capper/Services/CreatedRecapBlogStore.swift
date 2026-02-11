@@ -16,18 +16,24 @@ struct CreatedRecapBlog: Identifiable, Equatable, Hashable {
     let createdAt: Date
     let coverImageName: String
     let coverAssetIdentifier: String?
+    /// Number of places visited (stops).
+    let totalPlaceVisitCount: Int
+    /// Duration of the trip in days.
+    let tripDurationDays: Int
+    /// Number of selected photos
     let selectedPhotoCount: Int
-    /// Country for Profile grouping; set when blog detail is built/saved.
+    /// Primary country name
     let countryName: String?
-    /// Trip date range for display (e.g. "Jan 15 – 20, 2025"). Set when blog is created.
+    /// Display text for date range
     let tripDateRangeText: String?
-    /// When the blog was last saved/edited. Nil until user taps Save on the blog page.
+    /// Last edit timestamp
     let lastEditedAt: Date?
-    /// Trip date range (start/end) for excluding these dates from future scans. Nil if not set (e.g. older blogs).
+    /// Start date of the trip
     let tripStartDate: Date?
+    /// End date of the trip
     let tripEndDate: Date?
 
-    init(id: UUID = UUID(), sourceTripId: UUID, title: String, createdAt: Date, coverImageName: String, coverAssetIdentifier: String? = nil, selectedPhotoCount: Int, countryName: String? = nil, tripDateRangeText: String? = nil, lastEditedAt: Date? = nil, tripStartDate: Date? = nil, tripEndDate: Date? = nil) {
+    init(id: UUID = UUID(), sourceTripId: UUID, title: String, createdAt: Date, coverImageName: String, coverAssetIdentifier: String? = nil, selectedPhotoCount: Int, countryName: String? = nil, tripDateRangeText: String? = nil, lastEditedAt: Date? = nil, tripStartDate: Date? = nil, tripEndDate: Date? = nil, totalPlaceVisitCount: Int = 0, tripDurationDays: Int = 1) {
         self.id = id
         self.sourceTripId = sourceTripId
         self.title = title
@@ -40,6 +46,8 @@ struct CreatedRecapBlog: Identifiable, Equatable, Hashable {
         self.lastEditedAt = lastEditedAt
         self.tripStartDate = tripStartDate
         self.tripEndDate = tripEndDate
+        self.totalPlaceVisitCount = totalPlaceVisitCount
+        self.tripDurationDays = tripDurationDays
     }
 }
 
@@ -65,6 +73,11 @@ final class CreatedRecapBlogStore: ObservableObject {
     func addCreatedBlog(trip: TripDraft) {
         let startDate = trip.earliestDate
         let endDate = trip.latestDate
+        // Build detail to get place count (stops)
+        let tempDetail = buildBlogDetail(from: trip)
+        let placeCount = tempDetail.days.reduce(0) { $0 + $1.placeStops.count }
+        let duration = trip.days.count
+
         let blog = CreatedRecapBlog(
             sourceTripId: trip.id,
             title: trip.title,
@@ -76,7 +89,9 @@ final class CreatedRecapBlogStore: ObservableObject {
             tripDateRangeText: trip.tripDateRangeDisplayText,
             lastEditedAt: nil,
             tripStartDate: startDate,
-            tripEndDate: endDate
+            tripEndDate: endDate,
+            totalPlaceVisitCount: placeCount,
+            tripDurationDays: duration
         )
         tripDraftsBySourceId[trip.id] = trip
         recents.insert(blog, at: 0)
@@ -148,7 +163,9 @@ final class CreatedRecapBlogStore: ObservableObject {
             tripDateRangeText: trip.tripDateRangeDisplayText,
             lastEditedAt: Date(),
             tripStartDate: trip.earliestDate,
-            tripEndDate: trip.latestDate
+            tripEndDate: trip.latestDate,
+            totalPlaceVisitCount: detail.days.reduce(0) { $0 + $1.placeStops.count },
+            tripDurationDays: detail.days.count
             )
         }
     }
@@ -172,7 +189,7 @@ final class CreatedRecapBlogStore: ObservableObject {
         guard let idx = recents.firstIndex(where: { $0.sourceTripId == detail.id }) else { return }
         let old = recents[idx]
         let country = (detail.countryName.flatMap { $0.isEmpty || $0 == "Unknown" ? nil : $0 }) ?? old.countryName
-        recents[idx] = CreatedRecapBlog(
+            recents[idx] = CreatedRecapBlog(
             id: old.id,
             sourceTripId: old.sourceTripId,
             title: detail.title,
@@ -184,7 +201,9 @@ final class CreatedRecapBlogStore: ObservableObject {
             tripDateRangeText: old.tripDateRangeText,
             lastEditedAt: asDraft ? old.lastEditedAt : Date(),
             tripStartDate: old.tripStartDate,
-            tripEndDate: old.tripEndDate
+            tripEndDate: old.tripEndDate,
+            totalPlaceVisitCount: detail.days.reduce(0) { $0 + $1.placeStops.count },
+            tripDurationDays: detail.days.count
         )
     }
 

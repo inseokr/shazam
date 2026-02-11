@@ -39,16 +39,22 @@ struct MapWithCenterSelector: View {
     @Binding var region: MKCoordinateRegion
     /// Called when user taps Select: (center, span). Parent should reverse geocode, update text field, and show Done.
     var onSelect: (CLLocationCoordinate2D, MKCoordinateSpan) -> Void
+    var onUnselect: () -> Void
+    var isSelected: Bool
 
     @State private var currentCenter: CLLocationCoordinate2D
     @State private var currentSpan: MKCoordinateSpan
 
     init(
         region: Binding<MKCoordinateRegion>,
-        onSelect: @escaping (CLLocationCoordinate2D, MKCoordinateSpan) -> Void
+        isSelected: Bool,
+        onSelect: @escaping (CLLocationCoordinate2D, MKCoordinateSpan) -> Void,
+        onUnselect: @escaping () -> Void
     ) {
         _region = region
+        self.isSelected = isSelected
         self.onSelect = onSelect
+        self.onUnselect = onUnselect
         _currentCenter = State(initialValue: region.wrappedValue.center)
         _currentSpan = State(initialValue: region.wrappedValue.span)
     }
@@ -80,20 +86,24 @@ struct MapWithCenterSelector: View {
 
     private var selectButton: some View {
         Button(action: {
-            onSelect(currentCenter, currentSpan)
+            if isSelected {
+                onUnselect()
+            } else {
+                onSelect(currentCenter, currentSpan)
+            }
         }) {
-            Text("Select")
+            Text(isSelected ? "Unselect" : "Select")
                 .font(.headline)
-                .foregroundColor(.black)
+                .foregroundColor(isSelected ? .white : .black)
                 .padding(.horizontal, 32)
                 .padding(.vertical, OnboardingConstants.Layout.selectButtonVerticalPadding)
-                .background(Color.white)
+                .background(isSelected ? Color.black.opacity(0.6) : Color.white)
                 .clipShape(Capsule())
         }
         .buttonStyle(.plain)
         .frame(maxWidth: .infinity)
-        .accessibilityLabel("Select neighborhood")
-        .accessibilityHint("Sets the area under the circle; then tap Done to continue")
+        .accessibilityLabel(isSelected ? "Unselect neighborhood" : "Select neighborhood")
+        .accessibilityHint(isSelected ? "Clears the current selection" : "Sets the area under the circle; then tap Done to continue")
     }
 }
 

@@ -161,7 +161,7 @@ struct TripsView: View {
                 // Banner removed — shown in RecapBlogPageView on first save
             }
         }
-        .overlay {
+        .overlay(alignment: .top) {
             if createdRecapStore.showDraftSavedToast {
                 draftSavedToast
             }
@@ -310,42 +310,40 @@ struct TripsView: View {
 
     
     private var draftSavedToast: some View {
-        ZStack(alignment: .bottom) {
-            Color.black.opacity(0.8)
-                .ignoresSafeArea()
-                .onTapGesture {
-                    withAnimation { createdRecapStore.showDraftSavedToast = false }
-                }
-
-            HStack(spacing: 12) {
-                Image(systemName: "checkmark.circle.fill")
-                    .font(.title2)
-                    .foregroundColor(.green)
-                Text("Saved as draft")
-                    .font(.headline)
-                    .fontWeight(.semibold)
-                    .foregroundColor(.white)
-                Spacer()
-                Button {
-                    withAnimation { createdRecapStore.showDraftSavedToast = false }
-                } label: {
-                    Image(systemName: "xmark")
-                        .font(.body)
-                        .foregroundColor(.white.opacity(0.8))
-                        .padding(8)
-                        .contentShape(Rectangle())
-                }
+        HStack(spacing: 12) {
+            Image(systemName: "checkmark.circle.fill")
+                .font(.title2)
+                .foregroundColor(.green)
+            Text("Saved as draft")
+                .font(.headline)
+                .fontWeight(.semibold)
+                .foregroundColor(.white)
+            Spacer()
+            Button {
+                withAnimation { createdRecapStore.showDraftSavedToast = false }
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.body)
+                    .foregroundColor(.white.opacity(0.8))
+                    .padding(8)
+                    .contentShape(Rectangle())
             }
-            .padding(.horizontal, 20)
-            .padding(.vertical, 20)
-            .background(Color(white: 0.15))
-            .clipShape(RoundedRectangle(cornerRadius: 16))
-            .shadow(color: .black.opacity(0.5), radius: 20, y: 10)
-            .padding(.horizontal, 24)
-            .padding(.bottom, 40)
         }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 14)
+        .background(
+            RoundedRectangle(cornerRadius: 14)
+                .fill(.ultraThinMaterial)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 14)
+                        .stroke(Color.white.opacity(0.12), lineWidth: 1)
+                )
+        )
+        .padding(.horizontal, 20)
+        .padding(.top, 8)
+        .shadow(color: .black.opacity(0.3), radius: 10, y: 5)
         .zIndex(100)
-        .transition(.opacity)
+        .transition(.move(edge: .top).combined(with: .opacity))
         .task {
             try? await Task.sleep(nanoseconds: 5 * 1_000_000_000)
             withAnimation {

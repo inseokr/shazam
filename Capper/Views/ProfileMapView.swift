@@ -14,6 +14,7 @@ struct ProfileMapView: View {
     @Binding var selectedCreatedRecap: CreatedRecapBlog?
     @StateObject private var viewModel: ProfileMapViewModel
     @State private var mapPosition: MapCameraPosition = .automatic
+    @State private var selectedBlogForNavigation: CreatedRecapBlog?
 
     init(createdRecapStore: CreatedRecapBlogStore, selectedCreatedRecap: Binding<CreatedRecapBlog?>) {
         _viewModel = StateObject(wrappedValue: ProfileMapViewModel(createdRecapStore: createdRecapStore))
@@ -36,6 +37,12 @@ struct ProfileMapView: View {
         .onChange(of: viewModel.mapRegionChangeCounter) { _, _ in
             mapPosition = .region(viewModel.mapRegion)
         }
+        .navigationDestination(item: $selectedBlogForNavigation) { blog in
+            RecapBlogPageView(
+                blogId: blog.sourceTripId,
+                initialTrip: createdRecapStore.tripDraft(for: blog.sourceTripId)
+            )
+        }
     }
 
     private var profileMap: some View {
@@ -48,7 +55,7 @@ struct ProfileMapView: View {
                     )
                     .onTapGesture {
                         viewModel.selectTrip(item.blog.sourceTripId)
-                        selectedCreatedRecap = item.blog
+                        selectedBlogForNavigation = item.blog
                     }
                 }
             }
@@ -147,7 +154,9 @@ struct CountryMapView: View {
     @Binding var selectedCreatedRecap: CreatedRecapBlog?
     @EnvironmentObject private var createdRecapStore: CreatedRecapBlogStore
     @StateObject private var viewModel: ProfileMapViewModel
+
     @State private var mapPosition: MapCameraPosition = .automatic
+    @State private var selectedBlogForNavigation: CreatedRecapBlog?
 
     init(countryName: String, selectedCreatedRecap: Binding<CreatedRecapBlog?>) {
         self.countryName = countryName
@@ -165,7 +174,7 @@ struct CountryMapView: View {
                     )
                     .onTapGesture {
                         viewModel.selectTrip(item.blog.sourceTripId)
-                        selectedCreatedRecap = item.blog
+                        selectedBlogForNavigation = item.blog
                     }
                 }
             }
@@ -184,6 +193,13 @@ struct CountryMapView: View {
         }
         .onChange(of: viewModel.mapRegionChangeCounter) { _, _ in
             mapPosition = .region(viewModel.mapRegion)
+        }
+
+        .navigationDestination(item: $selectedBlogForNavigation) { blog in
+            RecapBlogPageView(
+                blogId: blog.sourceTripId,
+                initialTrip: createdRecapStore.tripDraft(for: blog.sourceTripId)
+            )
         }
     }
 }

@@ -47,8 +47,11 @@ struct CountryBlogsView: View {
                             Text(blog.title)
                                 .font(.headline)
                                 .foregroundColor(.primary)
-                            Text(Self.dateFormatter.string(from: blog.createdAt))
+                            Text("\(blog.totalPlaceVisitCount) Place\(blog.totalPlaceVisitCount == 1 ? "" : "s") • \(blog.tripDurationDays) Day\(blog.tripDurationDays == 1 ? "" : "s")")
                                 .font(.subheadline)
+                                .foregroundColor(.secondary)
+                            Text("Edited \(Self.dateFormatter.string(from: blog.lastEditedAt ?? blog.createdAt))")
+                                .font(.caption)
                                 .foregroundColor(.secondary)
                         }
                         Spacer()

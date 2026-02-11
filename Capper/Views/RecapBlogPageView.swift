@@ -19,7 +19,6 @@ struct RecapBlogPageView: View {
     @State private var showEditNameForStop: PlaceStop?
     @State private var showManagePhotosForStop: ManagePhotosItem?
     @State private var isEditMode = true
-    @State private var savedToast = false
     @State private var showBlogSettings = false
     @State private var showShareSheet = false
     @State private var showEditPhotoFlow = false
@@ -38,6 +37,7 @@ struct RecapBlogPageView: View {
     @State private var lastUndoAction: UndoAction?
     @State private var showUndoOverlay = false
     @State private var isUndoMinimized = false
+    @State private var isKeyboardVisible = false
 
     private enum UndoAction {
         case deletePlace(dayId: UUID, stop: PlaceStop, index: Int)
@@ -77,9 +77,11 @@ struct RecapBlogPageView: View {
                         if isEditMode {
                             let isFirstCreation = createdRecapStore.recents.first(where: { $0.sourceTripId == blogId })?.lastEditedAt == nil
                             if isFirstCreation {
-                                // Automatically save as draft on first exit
-                                createdRecapStore.saveBlogDetail(draft, asDraft: true)
-                                createdRecapStore.showDraftSavedToast = true
+                                // Only save and show toast if there are actual changes
+                                if draftSnapshot != nil && draft != draftSnapshot {
+                                    createdRecapStore.saveBlogDetail(draft, asDraft: true)
+                                    createdRecapStore.showDraftSavedToast = true
+                                }
                                 dismiss()
                             } else if draftSnapshot != nil && draft != draftSnapshot {
                                 showUnsavedChangesAlert = true
@@ -199,6 +201,12 @@ struct RecapBlogPageView: View {
                     draftSnapshot = draft
                 }
             }
+            .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in
+                withAnimation { isKeyboardVisible = true }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in
+                withAnimation { isKeyboardVisible = false }
+            }
             .sheet(item: $overflowStop) { item in
                 PlaceStopActionSheet(
                     placeTitle: item.stop.placeTitle,
@@ -230,58 +238,56 @@ struct RecapBlogPageView: View {
             .sheet(item: $placePhotoModalItem) { item in
                 placePhotoModalSheet(item: item)
             }
-            .overlay {
-                if savedToast {
-                    Text("Saved")
-                        .font(.subheadline)
-                        .foregroundColor(.white)
-                        .padding(.horizontal, 20)
-                        .padding(.vertical, 10)
-                        .background(Color.green)
-                        .cornerRadius(8)
-                        .transition(.opacity)
-                }
-            }
+
             .overlay(alignment: .top) {
                 if showFirstSaveBanner {
-                    HStack(spacing: 12) {
-                        Image(systemName: "checkmark.circle.fill")
-                            .font(.title2)
-                            .foregroundColor(.green)
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Blog Saved!")
-                                .font(.subheadline)
-                                .fontWeight(.semibold)
-                                .foregroundColor(.white)
-                            Text("Your recap blog and map routes are ready.")
-                                .font(.caption)
-                                .foregroundColor(.white.opacity(0.75))
+                    ZStack(alignment: .top) {
+                        // Dimmed background
+                        Color.black.opacity(0.4)
+                            .ignoresSafeArea()
+                            .onTapGesture {
+                                withAnimation { showFirstSaveBanner = false }
+                            }
+                        
+                        // Notification Banner
+                        HStack(spacing: 12) {
+                            Image(systemName: "checkmark.circle.fill")
+                                .font(.title2)
+                                .foregroundColor(.green)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Draft has been saved")
+                                    .font(.subheadline)
+                                    .fontWeight(.semibold)
+                                    .foregroundColor(.white)
+                                Text("Your recap blog is ready.")
+                                    .font(.caption)
+                                    .foregroundColor(.white.opacity(0.75))
+                            }
+                            Spacer()
+                            Button {
+                                withAnimation { showFirstSaveBanner = false }
+                            } label: {
+                                Image(systemName: "xmark.circle.fill")
+                                    .font(.title3)
+                                    .foregroundStyle(.white.opacity(0.5))
+                            }
                         }
-                        Spacer()
-                        Button {
-                            withAnimation { showFirstSaveBanner = false }
-                        } label: {
-                            Image(systemName: "xmark.circle.fill")
-                                .font(.title3)
-                                .foregroundStyle(.white.opacity(0.5))
-                        }
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 14)
+                        .background(
+                            RoundedRectangle(cornerRadius: 14)
+                                .fill(.ultraThinMaterial)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 14)
+                                        .stroke(Color.white.opacity(0.12), lineWidth: 1)
+                                )
+                        )
+                        .padding(.horizontal, 20)
+                        .padding(.top, 50)
                     }
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 14)
-                    .background(
-                        RoundedRectangle(cornerRadius: 14)
-                            .fill(.ultraThinMaterial)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 14)
-                                    .stroke(Color.white.opacity(0.12), lineWidth: 1)
-                            )
-                    )
-                    .padding(.horizontal, 20)
-                    .padding(.top, 50)
-                    .transition(.move(edge: .top).combined(with: .opacity))
+                    .transition(.opacity) // Fade in/out for the whole ZStack (dimming + banner)
                 }
             }
-            .animation(.easeInOut(duration: 0.2), value: savedToast)
             .animation(.spring(response: 0.4, dampingFraction: 0.8), value: showFirstSaveBanner)
             .preferredColorScheme(.dark)
         }
@@ -323,9 +329,12 @@ struct RecapBlogPageView: View {
                     scrollToStopId = nil
                 }
                 
-                // Day Filter fixed at bottom
-                dayFilterSection
-                    .ignoresSafeArea(.keyboard)
+                if !isKeyboardVisible {
+                    // Day Filter fixed at bottom
+                    dayFilterSection
+                        .ignoresSafeArea(.keyboard)
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                }
                 
                 // Undo Overlay (Banner or Button)
                 if showUndoOverlay {
@@ -716,10 +725,7 @@ struct RecapBlogPageView: View {
                 }
             }
         } else {
-            savedToast = true
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-                savedToast = false
-            }
+            // savedToast removed — user requested only the "Saved as draft" notification in TripsView
         }
     }
 

@@ -20,6 +20,8 @@ struct NeighborhoodSelectionView: View {
     @State private var pendingSpan: MKCoordinateSpan?
     @State private var isResolvingPlace = false
 
+    @FocusState private var isSearchFocused: Bool
+
     init(onSelect: @escaping () -> Void) {
         self.onSelect = onSelect
         _mapRegion = State(initialValue: MKCoordinateRegion(
@@ -37,7 +39,7 @@ struct NeighborhoodSelectionView: View {
                 topSection
                 mapSection
             }
-            if hasPendingSelection {
+            if hasPendingSelection || isSearchFocused {
                 doneButtonAtBottom
             }
         }
@@ -63,16 +65,29 @@ struct NeighborhoodSelectionView: View {
             )
             mapRegion = region
         }
+        .onChange(of: searchHelper.query) { _, newValue in
+            if newValue.isEmpty {
+                hasPendingSelection = false
+            }
+        }
     }
 
     private var topSection: some View {
         VStack(spacing: OnboardingConstants.Layout.spacingBetweenTitleAndSearch) {
-            Text("Neighborhood")
-                .font(.title)
-                .fontWeight(.bold)
-                .foregroundColor(.white)
-                .frame(maxWidth: .infinity)
-                .padding(.top, OnboardingConstants.Layout.titleTopPadding)
+            VStack(spacing: 8) {
+                Text("Neighborhood")
+                    .font(.title)
+                    .fontWeight(.bold)
+                    .foregroundColor(.white)
+                
+                Text("This helps us recommend nearby trips and organize your feed.")
+                    .font(.subheadline)
+                    .foregroundColor(.white.opacity(0.7))
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.top, OnboardingConstants.Layout.titleTopPadding)
 
             searchField
             if isResolvingPlace {
@@ -101,6 +116,7 @@ struct NeighborhoodSelectionView: View {
                 .textFieldStyle(.plain)
                 .foregroundColor(.black.opacity(0.85))
                 .padding(12)
+                .focused($isSearchFocused)
         }
         .background(OnboardingConstants.Colors.searchBackground)
         .cornerRadius(OnboardingConstants.Layout.searchCornerRadius)
@@ -115,6 +131,7 @@ struct NeighborhoodSelectionView: View {
                 ForEach(Array(searchHelper.suggestions.enumerated()), id: \.element.uniqueKey) { _, completion in
                     Button {
                         searchHelper.selectSuggestion(completion)
+                        isSearchFocused = false
                     } label: {
                         Text(suggestionDisplayText(completion))
                             .font(.body)
@@ -146,22 +163,37 @@ struct NeighborhoodSelectionView: View {
     }
 
     private var mapSection: some View {
-        MapWithCenterSelector(region: $mapRegion) { center, span in
-            handleSelect(center: center, span: span)
-        }
+        MapWithCenterSelector(
+            region: $mapRegion,
+            isSelected: hasPendingSelection,
+            onSelect: { center, span in
+                handleSelect(center: center, span: span)
+                isSearchFocused = false
+            },
+            onUnselect: {
+                hasPendingSelection = false
+                searchHelper.query = ""
+            }
+        )
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(OnboardingConstants.Colors.mapBackground)
         .ignoresSafeArea(edges: .bottom)
     }
 
     private var doneButtonAtBottom: some View {
-        Button(action: commitSelectionAndContinue) {
-            Text("Done")
+        Button(action: {
+            if hasPendingSelection {
+                commitSelectionAndContinue()
+            } else {
+                isSearchFocused = false
+            }
+        }) {
+            Text(hasPendingSelection ? "Done" : "Close")
                 .font(.headline)
-                .foregroundColor(.white)
+                .foregroundColor(hasPendingSelection ? .white : .black)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, OnboardingConstants.Layout.selectButtonVerticalPadding)
-                .background(OnboardingConstants.Colors.doneButtonBlue)
+                .background(hasPendingSelection ? OnboardingConstants.Colors.doneButtonBlue : Color(white: 0.9))
                 .clipShape(Capsule())
         }
         .buttonStyle(.plain)
@@ -169,8 +201,8 @@ struct NeighborhoodSelectionView: View {
         .padding(.bottom, 32)
         .padding(.top, 16)
         .background(OnboardingConstants.Colors.background)
-        .accessibilityLabel("Done")
-        .accessibilityHint("Save neighborhood and continue")
+        .accessibilityLabel(hasPendingSelection ? "Done" : "Close keyboard")
+        .accessibilityHint(hasPendingSelection ? "Save neighborhood and continue" : "Dismiss keyboard")
     }
 
     /// Called when user taps Select: capture center/span and reverse geocode to update the text field. Does not navigate.

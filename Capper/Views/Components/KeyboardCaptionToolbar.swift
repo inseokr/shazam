@@ -25,7 +25,8 @@ struct KeyboardCaptionToolbar: View {
                 .clipShape(Capsule())
         }
         .padding(.horizontal, 16)
-        .padding(.vertical, 10)
+        .padding(.top, 10)
+        .padding(.bottom, 20)
         .frame(maxWidth: .infinity)
         .background(.ultraThinMaterial.opacity(0.75))
     }
