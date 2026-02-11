@@ -19,6 +19,8 @@ struct MyBlogsProfileView: View {
     @State private var selectedSection: CountrySection?
     @State private var showMyMap = false
     @State private var showViewAll = false
+    @State private var isSearchActive = false
+    @FocusState private var isSearchFocused: Bool
 
     init(createdRecapStore: CreatedRecapBlogStore, selectedCreatedRecap: Binding<CreatedRecapBlog?>) {
         _viewModel = StateObject(wrappedValue: MyBlogsProfileViewModel())
@@ -33,9 +35,19 @@ struct MyBlogsProfileView: View {
                 .ignoresSafeArea()
 
             ScrollView {
-                let sections = viewModel.filteredSections(from: MyBlogsProfileViewModel.sections(from: createdRecapStore.countrySummaries))
+                let allSections = MyBlogsProfileViewModel.sections(from: createdRecapStore.countrySummaries)
+                let sections = viewModel.filteredSections(from: allSections)
                 Group {
-                    if sections.isEmpty {
+                    if isSearchActive && !viewModel.isSearching {
+                        // Search mode active but nothing typed yet
+                        VStack(spacing: 12) {
+                            Text("Search by city or blog title")
+                                .font(.subheadline)
+                                .foregroundColor(.white.opacity(0.6))
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 48)
+                    } else if sections.isEmpty {
                         emptyState
                     } else {
                         LazyVStack(spacing: cardSpacing) {
@@ -111,9 +123,24 @@ struct MyBlogsProfileView: View {
         HStack(spacing: 12) {
             Image(systemName: "magnifyingglass")
                 .foregroundColor(.white.opacity(0.7))
-            TextField("Search city", text: $viewModel.searchText)
+            TextField("Search city or blog title", text: $viewModel.searchText)
                 .foregroundColor(.white)
                 .autocorrectionDisabled()
+                .focused($isSearchFocused)
+                .onTapGesture {
+                    isSearchActive = true
+                }
+            if isSearchActive {
+                Button {
+                    viewModel.searchText = ""
+                    isSearchFocused = false
+                    isSearchActive = false
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundColor(.white.opacity(0.5))
+                }
+                .buttonStyle(.plain)
+            }
         }
         .padding(.horizontal, 16)
         .frame(height: searchBarHeight)

@@ -94,11 +94,11 @@ struct LandingView: View {
                     )
                 )
             VStack(alignment: .leading, spacing: 2) {
-                Text("Your recap blog is ready")
+                Text("Your recap blog is ready!")
                     .font(.subheadline)
                     .fontWeight(.semibold)
                     .foregroundColor(.white)
-                Text("Tap to view")
+                Text("Available in your Profile")
                     .font(.caption)
                     .foregroundColor(.white.opacity(0.75))
             }
@@ -131,16 +131,14 @@ struct LandingView: View {
             }
             createdRecapStore.dismissRecapCreatedBanner()
         }
-        .onAppear {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 6) {
-                createdRecapStore.dismissRecapCreatedBanner()
-            }
-        }
+        .onAppear {}
     }
 
     private var scanCTA: some View {
         Button {
-            tripsViewModel.startDefaultScan()
+            if tripsViewModel.tripDrafts.isEmpty {
+                tripsViewModel.startDefaultScan()
+            }
             showTrips = true
         } label: {
             VStack(spacing: 20) {

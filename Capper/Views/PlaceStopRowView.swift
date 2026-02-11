@@ -11,9 +11,13 @@ struct PlaceStopRowView: View {
     let day: RecapBlogDay
     let stop: PlaceStop
     let stopNumber: Int
+    var isEditMode: Bool = true
     @Binding var placeNote: String
     var photoCaption: (UUID) -> Binding<String>
-    var onOverflow: () -> Void
+    var onDelete: () -> Void
+    var onKebab: (() -> Void)?
+    var onManagePhotos: () -> Void
+    var onRemovePhoto: ((UUID) -> Void)?
     var onPhotoTapped: ((RecapPhoto) -> Void)?
     var onCaptionFocus: (() -> Void)?
 
@@ -53,10 +57,18 @@ struct PlaceStopRowView: View {
                             .font(.headline)
                             .foregroundColor(.white)
                         Spacer()
-                        Button(action: onOverflow) {
-                            Image(systemName: "ellipsis")
-                                .font(.body)
-                                .foregroundColor(.secondary)
+                        if isEditMode {
+                            Button(action: onDelete) {
+                                Image(systemName: "trash")
+                                    .font(.body)
+                                    .foregroundColor(.secondary)
+                            }
+                        } else {
+                            Button { onKebab?() } label: {
+                                Image(systemName: "ellipsis")
+                                    .font(.body)
+                                    .foregroundColor(.secondary)
+                            }
                         }
                     }
                     if let subtitle = stop.placeSubtitle, !subtitle.isEmpty {
@@ -107,15 +119,29 @@ struct PlaceStopRowView: View {
                     HStack(alignment: .top, spacing: 10) {
                         ForEach(stop.photos) { photo in
                             VStack(alignment: .leading, spacing: 6) {
-                                RecapPhotoThumbnail(photo: photo, cornerRadius: 8, showIcon: false, targetSize: CGSize(width: 480, height: 480))
-                                    .aspectRatio(1, contentMode: .fill)
-                                    .frame(width: thumbnailSize, height: thumbnailSize)
-                                    .clipped()
-                                    .cornerRadius(8)
-                                    .contentShape(Rectangle())
-                                    .onTapGesture {
-                                        onPhotoTapped?(photo)
+                                ZStack(alignment: .topTrailing) {
+                                    RecapPhotoThumbnail(photo: photo, cornerRadius: 8, showIcon: false, targetSize: CGSize(width: 480, height: 480))
+                                        .aspectRatio(1, contentMode: .fill)
+                                        .frame(width: thumbnailSize, height: thumbnailSize)
+                                        .clipped()
+                                        .cornerRadius(8)
+                                        .contentShape(Rectangle())
+                                        .onTapGesture {
+                                            onPhotoTapped?(photo)
+                                        }
+                                    if isEditMode {
+                                        Button {
+                                            onRemovePhoto?(photo.id)
+                                        } label: {
+                                            Image(systemName: "xmark.circle.fill")
+                                                .font(.system(size: 22))
+                                                .symbolRenderingMode(.palette)
+                                                .foregroundStyle(.white, Color.black.opacity(0.6))
+                                        }
+                                        .buttonStyle(.plain)
+                                        .padding(6)
                                     }
+                                }
                                 TextField("Leave a story for this photo", text: photoCaption(photo.id))
                                     .textFieldStyle(.plain)
                                     .font(.caption)
@@ -128,6 +154,22 @@ struct PlaceStopRowView: View {
                                     }
                             }
                             .frame(width: thumbnailSize)
+                        }
+                        if isEditMode {
+                            // Manage Photos card at end of scroll
+                            Button(action: onManagePhotos) {
+                                RoundedRectangle(cornerRadius: 8)
+                                    .strokeBorder(Color.white.opacity(0.6), lineWidth: 1.5)
+                                    .frame(width: thumbnailSize, height: thumbnailSize)
+                                    .overlay {
+                                        Text("Manage\nPhotos")
+                                            .font(.subheadline)
+                                            .fontWeight(.medium)
+                                            .foregroundColor(.white)
+                                            .multilineTextAlignment(.center)
+                                    }
+                            }
+                            .buttonStyle(.plain)
                         }
                     }
                     .padding(.leading, 16)
@@ -209,7 +251,10 @@ struct PlaceStopRowView: View {
             stopNumber: 1,
             placeNote: .constant(""),
             photoCaption: { _ in .constant("") },
-            onOverflow: {},
+            onDelete: {},
+            onKebab: nil,
+            onManagePhotos: {},
+            onRemovePhoto: nil,
             onPhotoTapped: nil,
             onCaptionFocus: nil
         )

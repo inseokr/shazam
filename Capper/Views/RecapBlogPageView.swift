@@ -18,6 +18,7 @@ struct RecapBlogPageView: View {
     @State private var overflowStop: OverflowItem?
     @State private var showEditNameForStop: PlaceStop?
     @State private var showManagePhotosForStop: ManagePhotosItem?
+    @State private var isEditMode = true
     @State private var savedToast = false
     @State private var showBlogSettings = false
     @State private var showShareSheet = false
@@ -46,19 +47,32 @@ struct RecapBlogPageView: View {
         .toolbarBackground(.hidden, for: .navigationBar)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
-                HStack(spacing: 16) {
+                if isEditMode {
                     Button {
-                        showShareSheet = true
+                        saveDraft()
+                        isEditMode = false
                     } label: {
-                        Image(systemName: "square.and.arrow.up")
+                        Text("Save")
+                            .font(.subheadline)
+                            .fontWeight(.semibold)
+                            .fixedSize()
                     }
                     .buttonStyle(.plain)
-                    Button {
-                        showBlogSettings = true
-                    } label: {
-                        Image(systemName: "gearshape")
+                } else {
+                    HStack(spacing: 16) {
+                        Button {
+                            showShareSheet = true
+                        } label: {
+                            Image(systemName: "square.and.arrow.up")
+                        }
+                        .buttonStyle(.plain)
+                        Button {
+                            showBlogSettings = true
+                        } label: {
+                            Image(systemName: "gearshape")
+                        }
+                        .buttonStyle(.plain)
                     }
-                    .buttonStyle(.plain)
                 }
             }
         }
@@ -66,9 +80,9 @@ struct RecapBlogPageView: View {
             ShareSheet(items: [shareText])
         }
         .sheet(isPresented: $showBlogSettings) {
-            BlogSettingsSheet(draft: $draft, onSave: { saveDraft() }, onManagePhotos: {
+            BlogSettingsSheet(draft: $draft, onSave: { saveDraft() }, onEditMode: {
                 showBlogSettings = false
-                showEditPhotoFlow = true
+                isEditMode = true
             })
         }
         .onAppear {
@@ -268,10 +282,20 @@ struct RecapBlogPageView: View {
                     day: day,
                     stop: stop,
                     stopNumber: index + 1,
+                    isEditMode: isEditMode,
                     placeNote: bindingForPlaceNote(dayId: day.id, stopId: stop.id),
                     photoCaption: { bindingForPhotoCaption(dayId: day.id, stopId: stop.id, photoId: $0) },
-                    onOverflow: {
+                    onDelete: {
+                        removePlaceStop(dayId: day.id, stopId: stop.id)
+                    },
+                    onKebab: {
                         overflowStop = OverflowItem(dayId: day.id, stop: stop)
+                    },
+                    onManagePhotos: {
+                        showManagePhotosForStop = ManagePhotosItem(dayId: day.id, stopId: stop.id)
+                    },
+                    onRemovePhoto: { photoId in
+                        removePhoto(dayId: day.id, stopId: stop.id, photoId: photoId)
                     },
                     onPhotoTapped: { photo in
                         placePhotoModalItem = PlacePhotoModalItem(dayId: day.id, stopId: stop.id, initialPhotoId: photo.id)
@@ -320,7 +344,16 @@ struct RecapBlogPageView: View {
         var day = draft.days[dayIndex]
         day.placeStops.removeAll { $0.id == stopId }
         draft.days[dayIndex] = day
-        overflowStop = nil
+    }
+
+    private func removePhoto(dayId: UUID, stopId: UUID, photoId: UUID) {
+        guard let dayIdx = draft.days.firstIndex(where: { $0.id == dayId }),
+              let stopIdx = draft.days[dayIdx].placeStops.firstIndex(where: { $0.id == stopId }) else { return }
+        var day = draft.days[dayIdx]
+        var stop = day.placeStops[stopIdx]
+        stop.photos.removeAll { $0.id == photoId }
+        day.placeStops[stopIdx] = stop
+        draft.days[dayIdx] = day
     }
 
     private func updatePlaceTitle(stopId: UUID, to title: String) {

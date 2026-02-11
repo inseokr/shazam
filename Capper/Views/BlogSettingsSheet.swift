@@ -9,7 +9,7 @@ import SwiftUI
 struct BlogSettingsSheet: View {
     @Binding var draft: RecapBlogDetail
     var onSave: () -> Void
-    var onManagePhotos: (() -> Void)? = nil
+    var onEditMode: (() -> Void)? = nil
     @Environment(\.dismiss) private var dismiss
 
     @State private var showTitleChange = false
@@ -29,12 +29,12 @@ struct BlogSettingsSheet: View {
                     } label: {
                         Label("Change Cover Photo", systemImage: "photo")
                     }
-                    if onManagePhotos != nil {
+                    if onEditMode != nil {
                         Button {
-                            onManagePhotos?()
+                            onEditMode?()
                             dismiss()
                         } label: {
-                            Label("Manage Photos", systemImage: "photo.on.rectangle.angled")
+                            Label("Edit Mode", systemImage: "pencil")
                         }
                     }
                 }

@@ -53,7 +53,7 @@ struct TripsView: View {
             )
         }
         .fullScreenCover(item: $createBlogFlowTrip) { trip in
-            CreateBlogFlowView(trip: trip) { createdTripId in
+            CreateBlogFlowView(trip: trip, startDirectlyCreating: true) { createdTripId in
                 TripDraftStore.clearSelection(tripId: createdTripId)
                 viewModel.removeTrip(id: createdTripId)
                 createBlogFlowTrip = nil
@@ -119,7 +119,7 @@ struct TripsView: View {
                     trips: viewModel.visibleDraftTrips,
                     mapPosition: $mapPosition,
                     onTripTapped: { trip in
-                        selectedTrip = trip
+                        createBlogFlowTrip = trip
                     }
                 )
                 .ignoresSafeArea(edges: .top)
@@ -269,7 +269,7 @@ struct TripsView: View {
                         .foregroundColor(.white.opacity(0.85))
                     ForEach(group.trips) { trip in
                         TripDraftRow(trip: trip)
-                            .onTapGesture { selectedTrip = trip }
+                            .onTapGesture { createBlogFlowTrip = trip }
                     }
                 }
             }
@@ -310,7 +310,7 @@ struct TripsView: View {
                             .foregroundColor(.white.opacity(0.85))
                         ForEach(group.trips) { trip in
                             TripDraftRow(trip: trip)
-                                .onTapGesture { selectedTrip = trip }
+                                .onTapGesture { createBlogFlowTrip = trip }
                         }
                     }
                 }

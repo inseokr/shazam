@@ -47,6 +47,12 @@ struct ContentView: View {
             if requested {
                 showTrips = false
                 dismissToLandingRequested = false
+                // After blog creation, navigate to the new recap blog
+                if createdRecapStore.showRecapCreatedBanner, let latest = createdRecapStore.recents.first {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                        selectedCreatedRecap = latest
+                    }
+                }
             }
         }
     }

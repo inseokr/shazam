@@ -44,10 +44,17 @@ final class MyBlogsProfileViewModel: ObservableObject {
         }
     }
 
-    /// Filter sections by country name (real-time); empty search shows all.
+    var isSearching: Bool {
+        !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    /// Filter sections by country name or blog title (real-time); empty search shows all.
     func filteredSections(from sections: [CountrySection]) -> [CountrySection] {
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         if query.isEmpty { return sections }
-        return sections.filter { $0.countryName.lowercased().contains(query) }
+        return sections.filter { section in
+            section.countryName.lowercased().contains(query) ||
+            section.blogs.contains(where: { $0.title.lowercased().contains(query) })
+        }
     }
 }

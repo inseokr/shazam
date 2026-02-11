@@ -9,6 +9,7 @@ import SwiftUI
 struct CreateBlogFlowView: View {
     let trip: TripDraft
     var existingBlogId: UUID? = nil
+    var startDirectlyCreating: Bool = false
     var onUpdateComplete: (() -> Void)? = nil
     @EnvironmentObject private var createdRecapStore: CreatedRecapBlogStore
     @Environment(\.dismissToLanding) private var dismissToLanding
@@ -45,8 +46,21 @@ struct CreateBlogFlowView: View {
             case .creating:
                 CreatingRecapView()
                     .onAppear {
-                        DispatchQueue.main.asyncAfter(deadline: .now() + creatingAnimationDuration) {
-                            goToLanding()
+                        if startDirectlyCreating {
+                            Task {
+                                let selectedTrip = await TripPhotoSelectionService.shared.selectTopPhotosPerCluster(trip: trip)
+                                await MainActor.run {
+                                    createdRecapStore.addCreatedBlog(trip: selectedTrip)
+                                    // Wait for animation then close
+                                    DispatchQueue.main.asyncAfter(deadline: .now() + creatingAnimationDuration) {
+                                        goToLanding()
+                                    }
+                                }
+                            }
+                        } else {
+                            DispatchQueue.main.asyncAfter(deadline: .now() + creatingAnimationDuration) {
+                                goToLanding()
+                            }
                         }
                     }
             }
@@ -56,6 +70,9 @@ struct CreateBlogFlowView: View {
             flowCoverTheme = trip.coverTheme
             if flowCoverAssetIdentifier == nil {
                 flowCoverAssetIdentifier = trip.coverAssetIdentifier ?? trip.days.flatMap(\.photos).first(where: \.isSelected)?.localIdentifier
+            }
+            if startDirectlyCreating {
+                step = .creating
             }
         }
     }

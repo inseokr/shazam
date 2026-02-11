@@ -10,7 +10,8 @@ import SwiftUI
 struct CountryBlogsView: View {
     let section: CountrySection
     @Binding var selectedBlog: CreatedRecapBlog?
-    @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var createdRecapStore: CreatedRecapBlogStore
+    @State private var localSelectedBlog: CreatedRecapBlog?
 
     private static let dateFormatter: DateFormatter = {
         let f = DateFormatter()
@@ -22,8 +23,7 @@ struct CountryBlogsView: View {
         List {
             ForEach(section.blogs) { blog in
                 Button {
-                    selectedBlog = blog
-                    dismiss()
+                    localSelectedBlog = blog
                 } label: {
                     HStack(spacing: 14) {
                         TripCoverImage(theme: blog.coverImageName, coverAssetIdentifier: blog.coverAssetIdentifier)
@@ -49,6 +49,12 @@ struct CountryBlogsView: View {
         .listStyle(.plain)
         .navigationTitle(displayCountryName(section.countryName))
         .navigationBarTitleDisplayMode(.inline)
+        .navigationDestination(item: $localSelectedBlog) { recap in
+            RecapBlogPageView(
+                blogId: recap.sourceTripId,
+                initialTrip: createdRecapStore.tripDraft(for: recap.sourceTripId)
+            )
+        }
     }
 
     private func displayCountryName(_ name: String) -> String {

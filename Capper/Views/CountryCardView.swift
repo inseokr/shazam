@@ -20,22 +20,22 @@ struct CountryCardView: View {
 
     var body: some View {
         Button(action: onTap) {
-            ZStack(alignment: .bottom) {
-                TripCoverImage(
-                    theme: section.latestCoverBlog.coverImageName,
-                    coverAssetIdentifier: section.latestCoverBlog.coverAssetIdentifier
-                )
-                .frame(maxWidth: .infinity)
-                .aspectRatio(16/10, contentMode: .fill)
-                .clipped()
-
+            TripCoverImage(
+                theme: section.latestCoverBlog.coverImageName,
+                coverAssetIdentifier: section.latestCoverBlog.coverAssetIdentifier
+            )
+            .frame(maxWidth: .infinity)
+            .aspectRatio(16/10, contentMode: .fill)
+            .clipped()
+            .overlay(
                 LinearGradient(
                     colors: [.clear, .black.opacity(0.25), .black.opacity(0.6), .black.opacity(0.85)],
                     startPoint: .top,
                     endPoint: .bottom
                 )
                 .allowsHitTesting(false)
-
+            )
+            .overlay(alignment: .bottom) {
                 VStack(spacing: 6) {
                     Text(displayCountryName(section.countryName))
                         .font(.headline)
