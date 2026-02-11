@@ -45,13 +45,13 @@ struct ContentView: View {
         })
         .onChange(of: dismissToLandingRequested) { _, requested in
             if requested {
-                showTrips = false
                 dismissToLandingRequested = false
-                // After blog creation, navigate to the new recap blog
+                // After blog creation, navigate to the new recap blog on top of TripsView
+                // so back button returns to Trips page
                 if createdRecapStore.showRecapCreatedBanner, let latest = createdRecapStore.recents.first {
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
-                        selectedCreatedRecap = latest
-                    }
+                    selectedCreatedRecap = latest
+                } else {
+                    showTrips = false
                 }
             }
         }

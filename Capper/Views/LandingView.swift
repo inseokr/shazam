@@ -131,7 +131,11 @@ struct LandingView: View {
             }
             createdRecapStore.dismissRecapCreatedBanner()
         }
-        .onAppear {}
+        .onAppear {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 7) {
+                createdRecapStore.dismissRecapCreatedBanner()
+            }
+        }
     }
 
     private var scanCTA: some View {

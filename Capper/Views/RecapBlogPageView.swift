@@ -42,7 +42,7 @@ struct RecapBlogPageView: View {
             }
         }
         .navigationBarBackButtonHidden(false)
-        .navigationTitle("")
+        .navigationTitle("Recap Blog")
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(.hidden, for: .navigationBar)
         .toolbar {
