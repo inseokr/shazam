@@ -44,7 +44,7 @@ struct CreateBlogFlowView: View {
                     primaryButtonTitle: existingBlogId != nil ? "Update" : nil
                 )
             case .creating:
-                CreatingRecapView()
+                CreatingRecapView(photoAssetIdentifiers: trip.days.flatMap(\.photos).compactMap(\.localIdentifier))
                     .onAppear {
                         if startDirectlyCreating {
                             Task {

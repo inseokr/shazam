@@ -30,6 +30,19 @@ struct CountryBlogsView: View {
                         TripCoverImage(theme: blog.coverImageName, coverAssetIdentifier: blog.coverAssetIdentifier)
                             .frame(width: 56, height: 56)
                             .clipShape(RoundedRectangle(cornerRadius: 8))
+                            .overlay(alignment: .bottomLeading) {
+                                if blog.lastEditedAt == nil {
+                                    Text("Draft")
+                                        .font(.caption2)
+                                        .fontWeight(.semibold)
+                                        .foregroundColor(.white)
+                                        .padding(.horizontal, 4)
+                                        .padding(.vertical, 2)
+                                        .background(Color.black.opacity(0.6))
+                                        .cornerRadius(4)
+                                        .padding(2)
+                                }
+                            }
                         VStack(alignment: .leading, spacing: 4) {
                             Text(blog.title)
                                 .font(.headline)

@@ -9,7 +9,8 @@ import Foundation
 import Photos
 import CoreLocation
 
-actor TripPhotoSelectionService {
+@MainActor
+final class TripPhotoSelectionService {
     static let shared = TripPhotoSelectionService()
     
     // Use PlaceStopClusteringService to match how blog stops are created.

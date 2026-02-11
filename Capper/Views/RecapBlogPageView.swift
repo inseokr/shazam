@@ -58,245 +58,247 @@ struct RecapBlogPageView: View {
     }
 
     var body: some View {
-        Group {
-            if draft.days.isEmpty && initialTrip != nil {
-                ProgressView("Loading…")
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else {
-                mainContent
+        GeometryReader { screenGeo in
+            Group {
+                if draft.days.isEmpty && initialTrip != nil {
+                    ProgressView("Loading…")
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else {
+                    mainContent(screenHeight: screenGeo.size.height)
+                }
             }
-        }
-        .navigationBarBackButtonHidden(true)
-        .navigationTitle(createdRecapStore.recents.first(where: { $0.sourceTripId == blogId })?.lastEditedAt == nil ? "Draft" : "Recap Blog")
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbarBackground(.hidden, for: .navigationBar)
-        .toolbar {
-            ToolbarItem(placement: .topBarLeading) {
-                Button {
-                    if isEditMode {
-                        let isFirstCreation = createdRecapStore.recents.first(where: { $0.sourceTripId == blogId })?.lastEditedAt == nil
-                        if isFirstCreation {
-                            // Automatically save as draft on first exit
-                            createdRecapStore.saveBlogDetail(draft, asDraft: true)
-                            createdRecapStore.showDraftSavedToast = true
-                            dismiss()
-                        } else if draftSnapshot != nil && draft != draftSnapshot {
-                            showUnsavedChangesAlert = true
+            .navigationBarBackButtonHidden(true)
+            .navigationTitle(createdRecapStore.recents.first(where: { $0.sourceTripId == blogId })?.lastEditedAt == nil ? "Draft" : "Recap Blog")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(.hidden, for: .navigationBar)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button {
+                        if isEditMode {
+                            let isFirstCreation = createdRecapStore.recents.first(where: { $0.sourceTripId == blogId })?.lastEditedAt == nil
+                            if isFirstCreation {
+                                // Automatically save as draft on first exit
+                                createdRecapStore.saveBlogDetail(draft, asDraft: true)
+                                createdRecapStore.showDraftSavedToast = true
+                                dismiss()
+                            } else if draftSnapshot != nil && draft != draftSnapshot {
+                                showUnsavedChangesAlert = true
+                            } else {
+                                dismiss()
+                            }
                         } else {
                             dismiss()
                         }
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "chevron.left")
+                                .font(.body.weight(.semibold))
+                        }
+                    }
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    if isEditMode {
+                        Button {
+                            saveDraft()
+                            isEditMode = false
+                        } label: {
+                            Text("Save")
+                                .font(.subheadline)
+                                .fontWeight(.semibold)
+                                .foregroundColor(.white)
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 6)
+                                .background(Color.blue)
+                                .clipShape(Capsule())
+                                .fixedSize()
+                        }
+                        .buttonStyle(.plain)
                     } else {
+                        HStack(spacing: 16) {
+                            Button {
+                                showShareSheet = true
+                            } label: {
+                                Image(systemName: "square.and.arrow.up")
+                            }
+                            .buttonStyle(.plain)
+                            Button {
+                                showBlogSettings = true
+                            } label: {
+                                Image(systemName: "gearshape")
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                }
+            }
+            .sheet(isPresented: $showShareSheet) {
+                ShareSheet(items: [shareText])
+            }
+            .sheet(isPresented: $showBlogSettings) {
+                BlogSettingsSheet(
+                    draft: $draft,
+                    onSave: { saveDraft() },
+                    onEditMode: {
+                        showBlogSettings = false
+                        isEditMode = true
+                    },
+                    onDelete: {
+                        createdRecapStore.deleteBlog(sourceTripId: blogId)
                         dismiss()
                     }
-                } label: {
-                    HStack(spacing: 4) {
-                        Image(systemName: "chevron.left")
-                            .font(.body.weight(.semibold))
-                    }
+                )
+            }
+            .sheet(isPresented: $showTitleChange) {
+                BlogTitleChangeSheet(title: $draft.title) {
+                    showTitleChange = false
                 }
             }
-            ToolbarItem(placement: .topBarTrailing) {
-                if isEditMode {
-                    Button {
-                        saveDraft()
-                        isEditMode = false
-                    } label: {
-                        Text("Save")
-                            .font(.subheadline)
-                            .fontWeight(.semibold)
-                            .foregroundColor(.white)
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 6)
-                            .background(Color.blue)
-                            .clipShape(Capsule())
-                            .fixedSize()
-                    }
-                    .buttonStyle(.plain)
-                } else {
-                    HStack(spacing: 16) {
-                        Button {
-                            showShareSheet = true
-                        } label: {
-                            Image(systemName: "square.and.arrow.up")
-                        }
-                        .buttonStyle(.plain)
-                        Button {
-                            showBlogSettings = true
-                        } label: {
-                            Image(systemName: "gearshape")
-                        }
-                        .buttonStyle(.plain)
-                    }
+            .alert("Welcome to Your Blog!", isPresented: $showSaveTipAlert) {
+                Button("Don't Show Again") {
+                    showFirstTimeSaveTip = false
                 }
+                Button("Okay", role: .cancel) { }
+            } message: {
+                Text("Tap Save when you're done editing to keep your changes and unlock your map routes.")
             }
-        }
-        .sheet(isPresented: $showShareSheet) {
-            ShareSheet(items: [shareText])
-        }
-        .sheet(isPresented: $showBlogSettings) {
-            BlogSettingsSheet(
-                draft: $draft,
-                onSave: { saveDraft() },
-                onEditMode: {
-                    showBlogSettings = false
-                    isEditMode = true
-                },
-                onDelete: {
-                    createdRecapStore.deleteBlog(sourceTripId: blogId)
+            .alert("Leave Without Saving?", isPresented: $showUnsavedChangesAlert) {
+                Button("Yes", role: .destructive) {
                     dismiss()
                 }
-            )
-        }
-        .sheet(isPresented: $showTitleChange) {
-            BlogTitleChangeSheet(title: $draft.title) {
-                showTitleChange = false
+                Button("No", role: .cancel) { }
+            } message: {
+                Text("You have unsaved changes. Are you sure you want to leave?")
             }
-        }
-        .alert("Welcome to Your Blog!", isPresented: $showSaveTipAlert) {
-            Button("Don't Show Again") {
-                showFirstTimeSaveTip = false
+            .sheet(isPresented: $showCoverPhotoPicker) {
+                BlogCoverPhotoPickerView(
+                    photos: allIncludedPhotos,
+                    selectedIdentifier: $draft.selectedCoverPhotoIdentifier,
+                    saveButtonTitle: "Done",
+                    onSave: {
+                        showCoverPhotoPicker = false
+                    }
+                )
             }
-            Button("Okay", role: .cancel) { }
-        } message: {
-            Text("Tap Save when you're done editing to keep your changes and unlock your map routes.")
-        }
-        .alert("Leave Without Saving?", isPresented: $showUnsavedChangesAlert) {
-            Button("Yes", role: .destructive) {
-                dismiss()
-            }
-            Button("No", role: .cancel) { }
-        } message: {
-            Text("You have unsaved changes. Are you sure you want to leave?")
-        }
-        .sheet(isPresented: $showCoverPhotoPicker) {
-            BlogCoverPhotoPickerView(
-                photos: allIncludedPhotos,
-                selectedIdentifier: $draft.selectedCoverPhotoIdentifier,
-                saveButtonTitle: "Done",
-                onSave: {
-                    showCoverPhotoPicker = false
+            .onAppear {
+                loadDraftIfNeeded()
+                // If the blog has been saved before, start in View Mode.
+                if let existing = createdRecapStore.recents.first(where: { $0.sourceTripId == blogId }), existing.lastEditedAt != nil {
+                    isEditMode = false
+                } else if showFirstTimeSaveTip {
+                    showSaveTipAlert = true
                 }
-            )
-        }
-        .onAppear {
-            loadDraftIfNeeded()
-            // If the blog has been saved before, start in View Mode.
-            if let existing = createdRecapStore.recents.first(where: { $0.sourceTripId == blogId }), existing.lastEditedAt != nil {
-                isEditMode = false
-            } else if showFirstTimeSaveTip {
-                showSaveTipAlert = true
+                // Snapshot for change detection (after a brief delay so draft is loaded)
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                    if draftSnapshot == nil {
+                        draftSnapshot = draft
+                    }
+                }
             }
-            // Snapshot for change detection (after a brief delay so draft is loaded)
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                if draftSnapshot == nil {
+            .onChange(of: isEditMode) { _, editing in
+                if editing {
                     draftSnapshot = draft
                 }
             }
-        }
-        .onChange(of: isEditMode) { _, editing in
-            if editing {
-                draftSnapshot = draft
-            }
-        }
-        .sheet(item: $overflowStop) { item in
-            PlaceStopActionSheet(
-                placeTitle: item.stop.placeTitle,
-                onEditName: { showEditNameForStop = item.stop },
-                onEditPlace: { isEditMode = true },
-                onRemoveFromBlog: { removePlaceStop(dayId: item.dayId, stopId: item.stop.id) }
-            )
-        }
-        .sheet(item: $showEditNameForStop) { stop in
-            EditPlaceStopNameSheet(placeTitle: bindingForPlaceTitle(stopId: stop.id), location: stop.representativeLocation?.clCoordinate ?? stop.photos.first?.location?.clCoordinate, onSave: { newTitle in
-                updatePlaceTitle(stopId: stop.id, to: newTitle)
-            })
-        }
-        .sheet(item: $showManagePhotosForStop) { pair in
-            ManagePhotosView(
-                placeTitle: placeStop(dayId: pair.dayId, stopId: pair.stopId)?.placeTitle ?? "Photos",
-                photos: bindingForPhotos(dayId: pair.dayId, stopId: pair.stopId)
-            )
-        }
-        .fullScreenCover(isPresented: $showEditPhotoFlow) {
-            EditBlogPhotoFlowView(blogId: blogId, onDismiss: { showEditPhotoFlow = false })
-                .environmentObject(createdRecapStore)
-        }
-        .fullScreenCover(item: $fullScreenMapDay) { day in
-            FullScreenMapView(day: day) {
-                fullScreenMapDay = nil
-            }
-        }
-        .sheet(item: $placePhotoModalItem) { item in
-            placePhotoModalSheet(item: item)
-        }
-        .overlay {
-            if savedToast {
-                Text("Saved")
-                    .font(.subheadline)
-                    .foregroundColor(.white)
-                    .padding(.horizontal, 20)
-                    .padding(.vertical, 10)
-                    .background(Color.green)
-                    .cornerRadius(8)
-                    .transition(.opacity)
-            }
-        }
-        .overlay(alignment: .top) {
-            if showFirstSaveBanner {
-                HStack(spacing: 12) {
-                    Image(systemName: "checkmark.circle.fill")
-                        .font(.title2)
-                        .foregroundColor(.green)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Blog Saved!")
-                            .font(.subheadline)
-                            .fontWeight(.semibold)
-                            .foregroundColor(.white)
-                        Text("Your recap blog and map routes are ready.")
-                            .font(.caption)
-                            .foregroundColor(.white.opacity(0.75))
-                    }
-                    Spacer()
-                    Button {
-                        withAnimation { showFirstSaveBanner = false }
-                    } label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .font(.title3)
-                            .foregroundStyle(.white.opacity(0.5))
-                    }
-                }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 14)
-                .background(
-                    RoundedRectangle(cornerRadius: 14)
-                        .fill(.ultraThinMaterial)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 14)
-                                .stroke(Color.white.opacity(0.12), lineWidth: 1)
-                        )
+            .sheet(item: $overflowStop) { item in
+                PlaceStopActionSheet(
+                    placeTitle: item.stop.placeTitle,
+                    onEditName: { showEditNameForStop = item.stop },
+                    onEditPlace: { isEditMode = true },
+                    onRemoveFromBlog: { removePlaceStop(dayId: item.dayId, stopId: item.stop.id) }
                 )
-                .padding(.horizontal, 20)
-                .padding(.top, 50)
-                .transition(.move(edge: .top).combined(with: .opacity))
             }
+            .sheet(item: $showEditNameForStop) { stop in
+                EditPlaceStopNameSheet(placeTitle: bindingForPlaceTitle(stopId: stop.id), location: stop.representativeLocation?.clCoordinate ?? stop.photos.first?.location?.clCoordinate, onSave: { newTitle in
+                    updatePlaceTitle(stopId: stop.id, to: newTitle)
+                })
+            }
+            .sheet(item: $showManagePhotosForStop) { pair in
+                ManagePhotosView(
+                    placeTitle: placeStop(dayId: pair.dayId, stopId: pair.stopId)?.placeTitle ?? "Photos",
+                    photos: bindingForPhotos(dayId: pair.dayId, stopId: pair.stopId)
+                )
+            }
+            .fullScreenCover(isPresented: $showEditPhotoFlow) {
+                EditBlogPhotoFlowView(blogId: blogId, onDismiss: { showEditPhotoFlow = false })
+                    .environmentObject(createdRecapStore)
+            }
+            .fullScreenCover(item: $fullScreenMapDay) { day in
+                FullScreenMapView(day: day) {
+                    fullScreenMapDay = nil
+                }
+            }
+            .sheet(item: $placePhotoModalItem) { item in
+                placePhotoModalSheet(item: item)
+            }
+            .overlay {
+                if savedToast {
+                    Text("Saved")
+                        .font(.subheadline)
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 20)
+                        .padding(.vertical, 10)
+                        .background(Color.green)
+                        .cornerRadius(8)
+                        .transition(.opacity)
+                }
+            }
+            .overlay(alignment: .top) {
+                if showFirstSaveBanner {
+                    HStack(spacing: 12) {
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.title2)
+                            .foregroundColor(.green)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Blog Saved!")
+                                .font(.subheadline)
+                                .fontWeight(.semibold)
+                                .foregroundColor(.white)
+                            Text("Your recap blog and map routes are ready.")
+                                .font(.caption)
+                                .foregroundColor(.white.opacity(0.75))
+                        }
+                        Spacer()
+                        Button {
+                            withAnimation { showFirstSaveBanner = false }
+                        } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .font(.title3)
+                                .foregroundStyle(.white.opacity(0.5))
+                        }
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 14)
+                    .background(
+                        RoundedRectangle(cornerRadius: 14)
+                            .fill(.ultraThinMaterial)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 14)
+                                    .stroke(Color.white.opacity(0.12), lineWidth: 1)
+                            )
+                    )
+                    .padding(.horizontal, 20)
+                    .padding(.top, 50)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+                }
+            }
+            .animation(.easeInOut(duration: 0.2), value: savedToast)
+            .animation(.spring(response: 0.4, dampingFraction: 0.8), value: showFirstSaveBanner)
+            .preferredColorScheme(.dark)
         }
-        .animation(.easeInOut(duration: 0.2), value: savedToast)
-        .animation(.spring(response: 0.4, dampingFraction: 0.8), value: showFirstSaveBanner)
-        .preferredColorScheme(.dark)
     }
 
     @State private var scrollToStopId: UUID?
 
     private static let dayFilterApproxHeight: CGFloat = 52
 
-    private var mainContent: some View {
+    private func mainContent(screenHeight: CGFloat) -> some View {
         ScrollViewReader { proxy in
             ZStack(alignment: .bottom) {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 0) {
 
                         if draft.selectedCoverPhotoIdentifier != nil {
-                            coverPhotoHero
+                            coverPhotoHero(screenHeight: screenHeight)
                         } else {
                             blogTitleView
                         }
@@ -389,7 +391,7 @@ struct RecapBlogPageView: View {
         }
     }
 
-    private var coverPhotoHero: some View {
+    private func coverPhotoHero(screenHeight: CGFloat) -> some View {
         GeometryReader { geo in
             ZStack {
                 // Cover photo — tap to change
@@ -485,7 +487,7 @@ struct RecapBlogPageView: View {
                 }
             }
         }
-        .frame(height: UIScreen.main.bounds.height * 0.55)
+        .frame(height: screenHeight * 0.55)
         .padding(.bottom, 16)
     }
 

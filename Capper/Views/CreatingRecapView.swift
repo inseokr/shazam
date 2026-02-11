@@ -1,28 +1,30 @@
-//
-//  CreatingRecapView.swift
-//  Capper
-//
 
 import SwiftUI
 
 struct CreatingRecapView: View {
-    @State private var ringTrim: CGFloat = 0
-    @State private var ringRotation: Double = 0
-    @State private var assembledStep: Int = 0
-    @State private var pulseScale: CGFloat = 1
-    @State private var stepLabelIndex: Int = 0
+    var photoAssetIdentifiers: [String] = []
 
+    // Animation states
+    @State private var ringRotation: Double = 0
+    @State private var ringTrim: CGFloat = 0
+    @State private var pulseScale: CGFloat = 1.0
+    @State private var assembledStep: Int = 0
+    @State private var stepLabelIndex: Int = 0
+    
     private let stepLabels = [
-        "Selecting your photos…",
-        "Writing your story…",
-        "Almost there…"
+        "Analyzing photos...",
+        "Grouping by location...",
+        "Building your recap..."
     ]
+    
+
 
     var body: some View {
         ZStack {
             Color(uiColor: .systemGroupedBackground)
                 .ignoresSafeArea()
 
+            
             VStack(spacing: 32) {
                 buildingAnimation
                 messageSection
@@ -99,6 +101,7 @@ struct CreatingRecapView: View {
                 .foregroundColor(.secondary.opacity(0.8))
         }
         .padding(.horizontal, 24)
+
     }
 
     private func startAnimations() {
@@ -140,5 +143,5 @@ struct CreatingRecapView: View {
 }
 
 #Preview {
-    CreatingRecapView()
+    CreatingRecapView(photoAssetIdentifiers: [])
 }

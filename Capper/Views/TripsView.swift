@@ -166,14 +166,9 @@ struct TripsView: View {
                 draftSavedToast
             }
         }
-        .onChange(of: createdRecapStore.showDraftSavedToast) { _, show in
-            if show {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 5) {
-                    withAnimation {
-                        createdRecapStore.showDraftSavedToast = false
-                    }
-                }
-            }
+
+        .onDisappear {
+            createdRecapStore.showDraftSavedToast = false
         }
     }
 
@@ -348,6 +343,13 @@ struct TripsView: View {
             .padding(.bottom, 20)
         }
         .zIndex(100)
+        .transition(.opacity)
+        .task {
+            try? await Task.sleep(nanoseconds: 5 * 1_000_000_000)
+            withAnimation {
+                createdRecapStore.showDraftSavedToast = false
+            }
+        }
     }
 
     /// Success notification card: icon, title, "Tap to view", optional dismiss. Auto-dismisses after 6s; tap opens latest blog.
