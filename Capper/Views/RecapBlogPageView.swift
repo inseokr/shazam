@@ -5,6 +5,7 @@
 
 import SwiftUI
 import MapKit
+import Combine
 
 struct RecapBlogPageView: View {
     let blogId: UUID
@@ -38,6 +39,7 @@ struct RecapBlogPageView: View {
     @State private var showUndoOverlay = false
     @State private var isUndoMinimized = false
     @State private var isKeyboardVisible = false
+    @State private var cancellables = Set<AnyCancellable>()
 
     private enum UndoAction {
         case deletePlace(dayId: UUID, stop: PlaceStop, index: Int)
@@ -182,23 +184,29 @@ struct RecapBlogPageView: View {
                 )
             }
             .onAppear {
-                loadDraftIfNeeded()
-                // If the blog has been saved before, start in View Mode.
-                if let existing = createdRecapStore.recents.first(where: { $0.sourceTripId == blogId }), existing.lastEditedAt != nil {
-                    isEditMode = false
-                } else if showFirstTimeSaveTip {
-                    showSaveTipAlert = true
-                }
-                // Snapshot for change detection (after a brief delay so draft is loaded)
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                    if draftSnapshot == nil {
-                        draftSnapshot = draft
-                    }
+                if createdRecapStore.isLoading {
+                    createdRecapStore.$isLoading
+                        .filter { !$0 }
+                        .first()
+                        .receive(on: RunLoop.main)
+                        .sink { _ in
+                            self.loadDraftIfNeeded()
+                            self.checkFirstTimeTip()
+                        }
+                        .store(in: &cancellables)
+                } else {
+                    loadDraftIfNeeded()
+                    checkFirstTimeTip()
                 }
             }
             .onChange(of: isEditMode) { _, editing in
                 if editing {
                     draftSnapshot = draft
+                }
+            }
+            .onChange(of: draft) { _, newValue in
+                if isEditMode {
+                    AutosaveManager.shared.scheduleSave(detail: newValue)
                 }
             }
             .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in
@@ -713,6 +721,7 @@ struct RecapBlogPageView: View {
             lastUndoAction = nil
         }
 
+        AutosaveManager.shared.cancelPending()
         createdRecapStore.saveBlogDetail(draft)
 
         if isFirstSave {
@@ -930,6 +939,22 @@ struct RecapBlogPageView: View {
         if distanceInMiles < 0.1 { return nil }
         
         return String(format: "%.1f mi", distanceInMiles)
+    }
+
+    private func checkFirstTimeTip() {
+        // If the blog has been saved before, start in View Mode.
+        if let existing = createdRecapStore.recents.first(where: { $0.sourceTripId == blogId }), existing.lastEditedAt != nil {
+            isEditMode = false
+        } else if showFirstTimeSaveTip {
+            showSaveTipAlert = true
+        }
+        
+        // Snapshot for change detection (after a brief delay so draft is loaded)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            if self.draftSnapshot == nil {
+                self.draftSnapshot = self.draft
+            }
+        }
     }
 
     private func openNavigation(for stop: PlaceStop) {

@@ -12,6 +12,7 @@ import UIKit
 struct CapperApp: App {
     @StateObject private var photoAuth = PhotosAuthorizationManager()
     @AppStorage("blogify.hasCompletedOnboarding") private var hasCompletedOnboarding = false
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some Scene {
         WindowGroup {
@@ -32,7 +33,17 @@ struct CapperApp: App {
                 }
             }
             .onAppear {
-                hasCompletedOnboarding = false
+                // Ensure auth status is fresh
+                photoAuth.refreshStatus()
+            }
+            .onChange(of: scenePhase) { _, newPhase in
+                if newPhase == .inactive || newPhase == .background {
+                    Task {
+                        await BlogRepository.shared.saveIndex(
+                            CreatedRecapBlogStore.shared.recents
+                        )
+                    }
+                }
             }
         }
     }

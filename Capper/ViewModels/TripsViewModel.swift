@@ -150,7 +150,19 @@ final class TripsViewModel: ObservableObject {
 
     func onAppear() {
         guard scanState == .idle, tripDrafts.isEmpty else { return }
-        startDefaultScan()
+        if createdRecapStore.isLoading {
+            // Wait for store to load before scanning so occupiedDateRanges is accurate
+            createdRecapStore.$isLoading
+                .filter { !$0 }
+                .first()
+                .receive(on: RunLoop.main)
+                .sink { [weak self] _ in
+                    self?.startDefaultScan()
+                }
+                .store(in: &cancellables)
+        } else {
+            startDefaultScan()
+        }
     }
 
     func startDefaultScan() {

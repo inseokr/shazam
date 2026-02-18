@@ -38,6 +38,10 @@ struct MyBlogsProfileView: View {
                 let allSections = MyBlogsProfileViewModel.sections(from: createdRecapStore.countrySummaries)
                 let sections = viewModel.filteredSections(from: allSections)
                 Group {
+                    if !isSearchActive && !viewModel.unsavedTrips.isEmpty {
+                        unsavedTripsSection
+                    }
+
                     if isSearchActive && !viewModel.isSearching {
                         // Search mode active but nothing typed yet
                         VStack(spacing: 12) {
@@ -102,12 +106,46 @@ struct MyBlogsProfileView: View {
                 initialTrip: createdRecapStore.tripDraft(for: recap.sourceTripId)
             )
         }
+        .navigationDestination(item: $createBlogFlowTrip) { trip in
+            CreateBlogFlowView(trip: trip, startDirectlyCreating: true) { createdTripId in
+                TripDraftStore.clearSelection(tripId: createdTripId)
+                createBlogFlowTrip = nil
+                viewModel.loadUnsavedTrips() // Refresh after creation
+            }
+            .environmentObject(createdRecapStore)
+        }
         .sheet(isPresented: $showViewAll) {
             AllRecentsSheet(
                 createdRecapStore: createdRecapStore,
                 selectedRecap: $selectedCreatedRecap
             )
         }
+        .onAppear {
+            viewModel.loadUnsavedTrips()
+        }
+    }
+
+    @State private var createBlogFlowTrip: TripDraft?
+
+    private var unsavedTripsSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Trips Not Saved Yet")
+                .font(.headline)
+                .fontWeight(.bold)
+                .foregroundColor(.white)
+                .padding(.top, 16)
+            
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 12) {
+                    ForEach(viewModel.unsavedTrips) { trip in
+                        UnsavedTripCard(trip: trip) {
+                            createBlogFlowTrip = trip
+                        }
+                    }
+                }
+            }
+        }
+        .padding(.bottom, 24)
     }
 
     private var emptyState: some View {

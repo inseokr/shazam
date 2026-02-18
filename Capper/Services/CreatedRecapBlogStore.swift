@@ -9,7 +9,7 @@ import Foundation
 import SwiftUI
 
 /// A recap blog that was created from a draft trip. Stored so we can hide the draft from Trips and show it in Landing Recents.
-struct CreatedRecapBlog: Identifiable, Equatable, Hashable {
+struct CreatedRecapBlog: Identifiable, Equatable, Hashable, Codable, Sendable {
     let id: UUID
     let sourceTripId: UUID
     let title: String
@@ -51,11 +51,15 @@ struct CreatedRecapBlog: Identifiable, Equatable, Hashable {
     }
 }
 
+// MARK: - Store
+
 @MainActor
 final class CreatedRecapBlogStore: ObservableObject {
     static let shared = CreatedRecapBlogStore()
 
     @Published private(set) var recents: [CreatedRecapBlog] = []
+    /// True while loading from disk. Consumers (like TripsViewModel) should wait for this to be false before scanning.
+    @Published private(set) var isLoading = true
     /// When true, landing shows "Recap Blog has been created!" banner; clear after 5–7 sec.
     @Published var showRecapCreatedBanner = false
     /// Set to true when a blog is created. Consumed by the view (TripsView) to trigger the banner at the appropriate time.
@@ -67,7 +71,33 @@ final class CreatedRecapBlogStore: ObservableObject {
     private var blogDetailsBySourceId: [UUID: RecapBlogDetail] = [:]
     private let clusteringService = PlaceStopClusteringService()
 
-    private init() {}
+    private init() {
+        Task {
+            await loadFromDisk()
+        }
+    }
+
+    // MARK: - Disk I/O
+
+    private func loadFromDisk() async {
+        await BlogRepository.shared.runMigrationsIfNeeded()
+        let blogs = await BlogRepository.shared.loadAll()
+        let details = await BlogRepository.shared.loadAllDetails()
+        let drafts = await BlogRepository.shared.loadAllTripDrafts()
+        
+        self.recents = blogs
+        self.blogDetailsBySourceId = details
+        self.tripDraftsBySourceId = drafts
+        self.isLoading = false
+    }
+
+    private func persistIndex() {
+        Task {
+            await BlogRepository.shared.saveIndex(recents)
+        }
+    }
+
+    // MARK: - Public API
 
     /// Call when user completes the Create Blog sequence (before showing RecapSavedView).
     func addCreatedBlog(trip: TripDraft) {
@@ -98,6 +128,11 @@ final class CreatedRecapBlogStore: ObservableObject {
         pendingRecapCreated = true
         // Do not show banner immediately; let the UI trigger it when ready (e.g. after backing out to Trips).
         // showRecapCreatedBanner = true
+
+        persistIndex()
+        Task {
+            await BlogRepository.shared.saveTripDraft(trip, blogId: trip.id)
+        }
     }
 
     /// Dismiss the "Recap Blog has been created!" banner (called after auto-hide or tap).
@@ -140,6 +175,10 @@ final class CreatedRecapBlogStore: ObservableObject {
             trip.days[dayIdx] = day
         }
         tripDraftsBySourceId[blogId] = trip
+        tripDraftsBySourceId[blogId] = trip
+        Task {
+            await BlogRepository.shared.saveTripDraft(trip, blogId: blogId)
+        }
         return trip
     }
 
@@ -151,7 +190,7 @@ final class CreatedRecapBlogStore: ObservableObject {
         await MainActor.run {
             guard let idx = recents.firstIndex(where: { $0.sourceTripId == blogId }) else { return }
             let old = recents[idx]
-            recents[idx] = CreatedRecapBlog(
+            self.recents[idx] = CreatedRecapBlog(
             id: old.id,
             sourceTripId: old.sourceTripId,
             title: detail.title,
@@ -167,6 +206,11 @@ final class CreatedRecapBlogStore: ObservableObject {
             totalPlaceVisitCount: detail.days.reduce(0) { $0 + $1.placeStops.count },
             tripDurationDays: detail.days.count
             )
+            self.persistIndex()
+            Task {
+                await BlogRepository.shared.saveTripDraft(trip, blogId: blogId)
+                await BlogRepository.shared.saveDetail(detail)
+            }
         }
     }
 
@@ -205,14 +249,23 @@ final class CreatedRecapBlogStore: ObservableObject {
             totalPlaceVisitCount: detail.days.reduce(0) { $0 + $1.placeStops.count },
             tripDurationDays: detail.days.count
         )
+        persistIndex()
+        Task {
+            await BlogRepository.shared.saveDetail(detail)
+        }
     }
 
     /// Deletes a created blog. The underlying trip draft remains in TripDraftStore (or is re-discovered by scan) and will reappear in the Trips list because hasCreatedBlog(id) will return false.
     func deleteBlog(sourceTripId: UUID) {
         recents.removeAll { $0.sourceTripId == sourceTripId }
         blogDetailsBySourceId.removeValue(forKey: sourceTripId)
+        tripDraftsBySourceId.removeValue(forKey: sourceTripId)
         // If there was a pending banner for this blog (unlikely but possible), clear it.
         if pendingRecapCreated { pendingRecapCreated = false }
+        persistIndex()
+        Task {
+            await BlogRepository.shared.delete(blogId: sourceTripId)
+        }
     }
 
     /// Build RecapBlogDetail from a TripDraft (selected photos only, clustered into place stops). Use when no saved detail exists.
