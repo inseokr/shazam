@@ -13,6 +13,7 @@ import SwiftUI
 final class ProfileMapViewModel: ObservableObject {
     @Published var selectedCountryID: String?
     @Published var selectedTripID: UUID?
+    @Published var searchText: String = ""
     @Published var mapRegion: MKCoordinateRegion
     @Published var animatedRegion: MKCoordinateRegion?
     /// Incremented whenever mapRegion is set; use in onChange since MKCoordinateRegion is not Equatable.
@@ -39,10 +40,22 @@ final class ProfileMapViewModel: ObservableObject {
         store.countrySummaries
     }
 
-    /// Trips to show on map and in modal; filtered by selected country when set.
+    /// Trips to show on map and in modal; filtered by selected country and search text when set. Sorted newest to oldest.
     var visibleTrips: [CreatedRecapBlog] {
-        guard let id = selectedCountryID else { return allTrips }
-        return allTrips.filter { blog in (blog.countryName ?? "Unknown") == id }
+        var trips = selectedCountryID == nil ? allTrips : allTrips.filter { ($0.countryName ?? "Unknown") == selectedCountryID }
+        
+        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if !query.isEmpty {
+            trips = trips.filter { blog in
+                blog.title.lowercased().contains(query) || (blog.countryName?.lowercased().contains(query) ?? false)
+            }
+        }
+        
+        return trips.sorted { $0.createdAt > $1.createdAt }
+    }
+    
+    var isSearching: Bool {
+        !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     /// Latest trip overall (for initial map center and "back to all" recenter).

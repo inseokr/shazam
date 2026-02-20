@@ -76,8 +76,8 @@ struct MyBlogsProfileView: View {
                     MyMapButton {
                         showMyMap = true
                     }
-                    .padding(.trailing, horizontalPadding + 12)
-                    .padding(.bottom, searchBarHeight + 24)
+                    .padding(.trailing, 20)
+                    .padding(.bottom, 16)
                 }
                 searchBar
             }
@@ -209,12 +209,9 @@ private struct MyMapButton: View {
                 .font(.title2)
                 .foregroundColor(.white)
                 .frame(width: myMapButtonSize, height: myMapButtonSize)
-                .background(Color.white.opacity(0.2))
+                .background(Color.blue)
                 .clipShape(Capsule())
-                .overlay(
-                    Capsule()
-                        .stroke(Color.white.opacity(0.3), lineWidth: 1)
-                )
+                .shadow(color: Color.black.opacity(0.3), radius: 4, x: 0, y: 2)
         }
         .buttonStyle(.plain)
     }

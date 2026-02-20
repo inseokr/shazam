@@ -41,6 +41,7 @@ struct ProfilePageView: View {
     
     @StateObject private var viewModel = MyBlogsProfileViewModel()
     @State private var selectedCountryID: String? = nil
+    @State private var showMyMap = false
     
     private var uniqueCountries: [String] {
         let countries = createdRecapStore.recents.compactMap { $0.countryName }
@@ -56,8 +57,9 @@ struct ProfilePageView: View {
     }
 
     var body: some View {
-        ScrollView(showsIndicators: false) {
-            VStack(spacing: ProfileTheme.Spacing.xxl) {
+        ZStack(alignment: .bottomTrailing) {
+            ScrollView(showsIndicators: false) {
+                VStack(spacing: ProfileTheme.Spacing.xxl) {
                 
                 // 1. Centered Hero Section
                 ProfileHeroSection()
@@ -94,6 +96,22 @@ struct ProfilePageView: View {
             }
             .padding(.bottom, ProfileTheme.Spacing.massive)
         }
+        
+        Button {
+            showMyMap = true
+        } label: {
+            Image(systemName: "map.fill")
+                .font(.title2)
+                .foregroundColor(.white)
+                .frame(width: 52, height: 52)
+                .background(Color.blue)
+                .clipShape(Capsule())
+                .shadow(color: Color.black.opacity(0.3), radius: 4, x: 0, y: 2)
+        }
+        .buttonStyle(.plain)
+        .padding(.trailing, 20)
+        .padding(.bottom, 24)
+        }
         .background(Color(uiColor: .systemBackground))
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -116,6 +134,9 @@ struct ProfilePageView: View {
         }
         .onAppear {
             viewModel.loadUnsavedTrips()
+        }
+        .navigationDestination(isPresented: $showMyMap) {
+            MyMapView(selectedCreatedRecap: $selectedCreatedRecap)
         }
     }
 

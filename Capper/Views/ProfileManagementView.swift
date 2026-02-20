@@ -34,7 +34,7 @@ struct ProfileManagementView: View {
                             .foregroundColor(.primary)
                             .multilineTextAlignment(.center)
                         
-                        Text("Select which stories appear in the cloud and on your public profile.")
+                        Text("Select which blogs appear in the cloud and on your profile.")
                             .font(.subheadline)
                             .foregroundColor(.secondary)
                             .multilineTextAlignment(.center)

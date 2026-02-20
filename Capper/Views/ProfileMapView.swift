@@ -15,6 +15,9 @@ struct ProfileMapView: View {
     @StateObject private var viewModel: ProfileMapViewModel
     @State private var mapPosition: MapCameraPosition = .automatic
     @State private var selectedBlogForNavigation: CreatedRecapBlog?
+    
+    @State private var isSearchActive = false
+    @FocusState private var isSearchFocused: Bool
 
     init(createdRecapStore: CreatedRecapBlogStore, selectedCreatedRecap: Binding<CreatedRecapBlog?>) {
         _viewModel = StateObject(wrappedValue: ProfileMapViewModel(createdRecapStore: createdRecapStore))
@@ -24,7 +27,15 @@ struct ProfileMapView: View {
     var body: some View {
         ZStack(alignment: .top) {
             profileMap
-            countryFilterBar
+            
+            VStack(spacing: 0) {
+                if isSearchActive {
+                    searchBar
+                        .padding(.top, 12)
+                } else {
+                    countryFilterBar
+                }
+            }
             
             // Bottom Trip List
             VStack {
@@ -37,6 +48,23 @@ struct ProfileMapView: View {
         .navigationTitle("My Map")
         .navigationBarTitleDisplayMode(.inline)
         .preferredColorScheme(.dark)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button {
+                    withAnimation {
+                        isSearchActive.toggle()
+                        if isSearchActive {
+                            isSearchFocused = true
+                        } else {
+                            viewModel.searchText = ""
+                        }
+                    }
+                } label: {
+                    Image(systemName: "magnifyingglass")
+                        .foregroundColor(.primary)
+                }
+            }
+        }
         .onAppear {
             viewModel.onAppear()
             mapPosition = .region(viewModel.mapRegion)
@@ -109,6 +137,37 @@ struct ProfileMapView: View {
                 endPoint: .bottom
             )
         )
+    }
+    
+    // MARK: - Search Bar
+    
+    private var searchBar: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "magnifyingglass")
+                .foregroundColor(.white.opacity(0.7))
+            TextField("Search city or blog title", text: $viewModel.searchText)
+                .foregroundColor(.white)
+                .autocorrectionDisabled()
+                .focused($isSearchFocused)
+            
+            if isSearchActive {
+                Button {
+                    withAnimation {
+                        viewModel.searchText = ""
+                        isSearchFocused = false
+                        isSearchActive = false
+                    }
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundColor(.white.opacity(0.5))
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(.horizontal, 16)
+        .frame(height: 56)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12))
+        .padding(.horizontal, 20)
     }
     
     @State private var scrolledTripID: UUID?

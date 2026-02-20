@@ -20,6 +20,9 @@ struct LandingView: View {
     /// CTA text cycles every 5 seconds: "Tap to Scan" ↔ "Create A Blog Today"
     @State private var ctaIsAlternate = false
     @State private var ctaOpacity: Double = 1
+    
+    // For local persistence of the selected avatar
+    @AppStorage("customProfileImageData") private var customProfileImageData: Data?
 
     private let landingBackground = Color(red: 5/255, green: 10/255, blue: 48/255)
     private let ctaInterval: TimeInterval = 5
@@ -53,16 +56,24 @@ struct LandingView: View {
                     } label: {
                         if let user = authService.currentUser {
                             // Signed-in avatar
-                            ZStack {
-                                Circle()
-                                    .fill(LinearGradient(
-                                        colors: [Color(red: 0.2, green: 0.5, blue: 1), Color(red: 0.1, green: 0.3, blue: 0.8)],
-                                        startPoint: .topLeading, endPoint: .bottomTrailing
-                                    ))
+                            if let data = customProfileImageData, let uiImage = UIImage(data: data) {
+                                Image(uiImage: uiImage)
+                                    .resizable()
+                                    .scaledToFill()
                                     .frame(width: 32, height: 32)
-                                Text(user.initials)
-                                    .font(.system(size: 13, weight: .bold))
-                                    .foregroundColor(.white)
+                                    .clipShape(Circle())
+                            } else {
+                                ZStack {
+                                    Circle()
+                                        .fill(LinearGradient(
+                                            colors: [Color(red: 0.2, green: 0.5, blue: 1), Color(red: 0.1, green: 0.3, blue: 0.8)],
+                                            startPoint: .topLeading, endPoint: .bottomTrailing
+                                        ))
+                                        .frame(width: 32, height: 32)
+                                    Text(user.initials)
+                                        .font(.system(size: 13, weight: .bold))
+                                        .foregroundColor(.white)
+                                }
                             }
                         } else {
                             Image(systemName: "person.crop.circle")
@@ -305,6 +316,9 @@ private struct SettingsView: View {
     @AppStorage("capper.tripClustering.debugLogging") private var tripClusteringDebug = false
     #endif
 
+    // For local persistence of the selected avatar
+    @AppStorage("customProfileImageData") private var customProfileImageData: Data?
+
     var body: some View {
         NavigationStack {
             List {
@@ -313,16 +327,24 @@ private struct SettingsView: View {
                     if let user = authService.currentUser {
                         // Signed-in row
                         HStack(spacing: 14) {
-                            ZStack {
-                                Circle()
-                                    .fill(LinearGradient(
-                                        colors: [Color(red: 0.2, green: 0.5, blue: 1), Color(red: 0.1, green: 0.3, blue: 0.8)],
-                                        startPoint: .topLeading, endPoint: .bottomTrailing
-                                    ))
+                            if let data = customProfileImageData, let uiImage = UIImage(data: data) {
+                                Image(uiImage: uiImage)
+                                    .resizable()
+                                    .scaledToFill()
                                     .frame(width: 40, height: 40)
-                                Text(user.initials)
-                                    .font(.system(size: 15, weight: .bold))
-                                    .foregroundColor(.white)
+                                    .clipShape(Circle())
+                            } else {
+                                ZStack {
+                                    Circle()
+                                        .fill(LinearGradient(
+                                            colors: [Color(red: 0.2, green: 0.5, blue: 1), Color(red: 0.1, green: 0.3, blue: 0.8)],
+                                            startPoint: .topLeading, endPoint: .bottomTrailing
+                                        ))
+                                        .frame(width: 40, height: 40)
+                                    Text(user.initials)
+                                        .font(.system(size: 15, weight: .bold))
+                                        .foregroundColor(.white)
+                                }
                             }
                             VStack(alignment: .leading, spacing: 2) {
                                 if let name = user.displayName, !name.isEmpty {
