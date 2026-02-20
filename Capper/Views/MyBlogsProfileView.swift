@@ -21,6 +21,7 @@ struct MyBlogsProfileView: View {
     @State private var showViewAll = false
     @State private var isSearchActive = false
     @FocusState private var isSearchFocused: Bool
+    @State private var selectedUnsavedTripPhotos: TripDraft?
 
     init(createdRecapStore: CreatedRecapBlogStore, selectedCreatedRecap: Binding<CreatedRecapBlog?>) {
         _selectedCreatedRecap = selectedCreatedRecap
@@ -113,6 +114,12 @@ struct MyBlogsProfileView: View {
             }
             .environmentObject(createdRecapStore)
         }
+        .navigationDestination(item: $selectedUnsavedTripPhotos) { trip in
+            UnsavedTripPhotosView(trip: trip) {
+                selectedUnsavedTripPhotos = nil
+                createBlogFlowTrip = trip
+            }
+        }
         .sheet(isPresented: $showViewAll) {
             AllRecentsSheet(
                 createdRecapStore: createdRecapStore,
@@ -138,7 +145,7 @@ struct MyBlogsProfileView: View {
                 HStack(spacing: 12) {
                     ForEach(viewModel.unsavedTrips) { trip in
                         UnsavedTripCard(trip: trip) {
-                            createBlogFlowTrip = trip
+                            selectedUnsavedTripPhotos = trip
                         }
                     }
                 }
@@ -187,8 +194,7 @@ struct MyBlogsProfileView: View {
         }
         .padding(.horizontal, 16)
         .frame(height: searchBarHeight)
-        .background(Color.white.opacity(0.12))
-        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12))
         .padding(.horizontal, horizontalPadding)
         .padding(.bottom, 12)
     }

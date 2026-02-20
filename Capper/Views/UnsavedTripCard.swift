@@ -9,7 +9,7 @@ import SwiftUI
 
 struct UnsavedTripCard: View {
     let trip: TripDraft
-    var onCreateBlog: () -> Void
+    var onViewPhotos: () -> Void
 
     private let cardWidth: CGFloat = 260
     private let cardHeight: CGFloat = 200
@@ -35,8 +35,8 @@ struct UnsavedTripCard: View {
                     .foregroundColor(.white.opacity(0.5))
                     .lineLimit(1)
                 
-                Button(action: onCreateBlog) {
-                    Text("Create Blog")
+                Button(action: onViewPhotos) {
+                    Text("View Photos")
                         .font(.caption)
                         .fontWeight(.bold)
                         .foregroundColor(.blue)

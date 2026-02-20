@@ -9,6 +9,7 @@ import SwiftUI
 struct LandingView: View {
     @Binding var showTrips: Bool
     @Binding var showProfile: Bool
+    @Binding var showSeeAll: Bool
     @Binding var selectedCreatedRecap: CreatedRecapBlog?
     @ObservedObject var tripsViewModel: TripsViewModel
     @EnvironmentObject private var createdRecapStore: CreatedRecapBlogStore
@@ -197,18 +198,22 @@ struct LandingView: View {
     private var recentRecapsSection: some View {
         if !createdRecapStore.displayRecents.isEmpty {
             VStack(alignment: .leading, spacing: 12) {
-                HStack {
-                    Text("Recent Blogs")
-                        .font(.headline)
-                        .foregroundColor(.white)
-                    Spacer()
-                    Button("See all") {
-                        showProfile = true
+                Button {
+                    showSeeAll = true
+                } label: {
+                    HStack {
+                        Text("Recent Blogs")
+                            .font(.headline)
+                            .foregroundColor(.white)
+                        Spacer()
+                        Text("See all")
+                            .font(.subheadline)
+                            .fontWeight(.medium)
+                            .foregroundColor(.white.opacity(0.9))
                     }
-                    .font(.subheadline)
-                    .fontWeight(.medium)
-                    .foregroundColor(.white.opacity(0.9))
+                    .contentShape(Rectangle())
                 }
+                .buttonStyle(.plain)
                 .padding(.horizontal, 20)
 
                 ScrollView(.horizontal, showsIndicators: false) {
@@ -495,6 +500,7 @@ struct AllRecentsSheet: View {
         LandingView(
             showTrips: .constant(false),
             showProfile: .constant(false),
+            showSeeAll: .constant(false),
             selectedCreatedRecap: .constant(nil),
             tripsViewModel: TripsViewModel(createdRecapStore: CreatedRecapBlogStore.shared)
         )

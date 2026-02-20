@@ -10,6 +10,7 @@ struct ContentView: View {
     @StateObject private var tripsViewModel: TripsViewModel
     @State private var showTrips = false
     @State private var showProfile = false
+    @State private var showSeeAll = false
     @State private var selectedCreatedRecap: CreatedRecapBlog?
     @State private var dismissToLandingRequested = false
 
@@ -22,6 +23,7 @@ struct ContentView: View {
             LandingView(
                 showTrips: $showTrips,
                 showProfile: $showProfile,
+                showSeeAll: $showSeeAll,
                 selectedCreatedRecap: $selectedCreatedRecap,
                 tripsViewModel: tripsViewModel
             )
@@ -32,9 +34,13 @@ struct ContentView: View {
                 ProfileView(selectedCreatedRecap: $selectedCreatedRecap)
                     .environmentObject(createdRecapStore)
             }
+            .navigationDestination(isPresented: $showSeeAll) {
+                MyBlogsProfileView(createdRecapStore: createdRecapStore, selectedCreatedRecap: $selectedCreatedRecap)
+                    .environmentObject(createdRecapStore)
+            }
             // Only push from Landing if we are staying on Landing (not showing Trips)
             .navigationDestination(isPresented: Binding(
-                get: { selectedCreatedRecap != nil && !showTrips && !showProfile },
+                get: { selectedCreatedRecap != nil && !showTrips && !showProfile && !showSeeAll },
                 set: { if !$0 { selectedCreatedRecap = nil } }
             )) {
                 if let recap = selectedCreatedRecap {

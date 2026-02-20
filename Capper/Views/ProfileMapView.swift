@@ -111,6 +111,8 @@ struct ProfileMapView: View {
         )
     }
     
+    @State private var scrolledTripID: UUID?
+
     // MARK: - Bottom Trip List
     
     private var bottomTripList: some View {
@@ -137,9 +139,23 @@ struct ProfileMapView: View {
                 }
                 .padding(.horizontal, 16)
                 .padding(.bottom, 20) // Safe area breathing room
+                .scrollTargetLayout()
+            }
+            .scrollTargetBehavior(.viewAligned)
+            .scrollPosition(id: $scrolledTripID)
+            .onChange(of: scrolledTripID) { _, newID in
+                if let id = newID, viewModel.selectedTripID != id {
+                    if let trip = viewModel.visibleTrips.first(where: { $0.sourceTripId == id }) {
+                        withAnimation {
+                            viewModel.selectTrip(id)
+                            viewModel.recenterToTrip(trip)
+                        }
+                    }
+                }
             }
             .onChange(of: viewModel.selectedTripID) { _, newID in
                 if let id = newID {
+                    scrolledTripID = id
                     withAnimation {
                         proxy.scrollTo(id, anchor: .center)
                     }
@@ -175,10 +191,15 @@ private struct ProfileMapCardView: View {
         Button(action: onTap) {
             HStack(spacing: 12) {
                 coverImage
-                tripInfo
-                chevronButton
+                
+                HStack(spacing: 12) {
+                    tripInfo
+                    chevronButton
+                }
+                .padding(.vertical, 12)
+                .padding(.trailing, 12)
             }
-            .padding(12)
+            .frame(height: 104)
             .background(.ultraThinMaterial)
             .background(Color.black.opacity(0.3))
             .cornerRadius(16)
@@ -194,14 +215,10 @@ private struct ProfileMapCardView: View {
         TripCoverImage(
             theme: blog.coverImageName,
             coverAssetIdentifier: blog.coverAssetIdentifier,
-            targetSize: CGSize(width: 160, height: 160)
+            targetSize: CGSize(width: 200, height: 200)
         )
-        .frame(width: 80, height: 80)
-        .clipShape(RoundedRectangle(cornerRadius: 8))
-        .overlay(
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(Color.white.opacity(0.2), lineWidth: 1)
-        )
+        .frame(width: 104, height: 104)
+        .clipped()
     }
 
     private var tripInfo: some View {
