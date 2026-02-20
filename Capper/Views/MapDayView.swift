@@ -21,6 +21,8 @@ struct MapDayView: View {
     var onTap: (() -> Void)?
     /// When set, map region centers on this place's coordinate (e.g. for full-screen card sync).
     var focusedPlaceId: UUID? = nil
+    
+    @State private var cameraPosition: MapCameraPosition = .automatic
 
     init(placeStops: [PlaceStop], height: CGFloat = 220, onTap: (() -> Void)? = nil, focusedPlaceId: UUID? = nil) {
         self.placeStops = placeStops
@@ -30,7 +32,7 @@ struct MapDayView: View {
     }
 
     var body: some View {
-        Map(position: .constant(.region(region))) {
+        Map(position: $cameraPosition) {
             if routeCoordinates.count >= 2 {
                 MapPolyline(coordinates: routeCoordinates)
                     .stroke(Color(red: 0, green: 122/255, blue: 1), lineWidth: 4)
@@ -73,6 +75,23 @@ struct MapDayView: View {
         .onTapGesture {
             onTap?()
         }
+        .onAppear {
+            updateCameraPosition(animated: false)
+        }
+        .onChange(of: focusedPlaceId) { _, _ in
+            updateCameraPosition(animated: true)
+        }
+    }
+
+    private func updateCameraPosition(animated: Bool) {
+        let newPosition = MapCameraPosition.region(region)
+        if animated {
+            withAnimation(.spring(response: 0.45, dampingFraction: 0.8)) {
+                cameraPosition = newPosition
+            }
+        } else {
+            cameraPosition = newPosition
+        }
     }
 
     private var markers: [PlaceMapMarker] {
@@ -111,7 +130,6 @@ struct MapDayView: View {
         }
         
         // Otherwise, center on the "Start" (first place) of the day.
-        // We use a moderate span to show context but focus on the start.
         if let startMarker = markers.first {
             return MKCoordinateRegion(
                 center: startMarker.coordinate,
@@ -119,7 +137,7 @@ struct MapDayView: View {
             )
         }
         
-        // Fallback (should be covered by startMarker check, but just in case)
+        // Fallback
         let lats = coords.map(\.latitude)
         let lons = coords.map(\.longitude)
         let minLat = lats.min()!
@@ -137,6 +155,7 @@ struct MapDayView: View {
         )
         return MKCoordinateRegion(center: center, span: span)
     }
+
     private func distanceString(from: CLLocationCoordinate2D, to: CLLocationCoordinate2D) -> String? {
          let loc1 = CLLocation(latitude: from.latitude, longitude: from.longitude)
          let loc2 = CLLocation(latitude: to.latitude, longitude: to.longitude)
@@ -307,18 +326,34 @@ struct FullScreenMapView: View {
     }
 
     private func placeCardsStrip(in geo: GeometryProxy) -> some View {
-        let cardWidth = min(geo.size.width * 0.88, 340)
-        let cardHeight: CGFloat = 120
-
-        return TabView(selection: $selectedPlaceIndex) {
-            ForEach(Array(day.placeStops.enumerated()), id: \.element.id) { index, stop in
-                PlaceMapCardView(stop: stop, stopNumber: index + 1, isSelected: selectedPlaceIndex == index)
-                    .frame(width: cardWidth, height: cardHeight)
-                    .tag(index)
+        let cardWidth = min(geo.size.width * 0.80, 340)
+        let cardHeight: CGFloat = 130 // Slightly taller for better premium feel
+        
+        return ScrollView(.horizontal, showsIndicators: false) {
+            LazyHStack(spacing: 16) {
+                ForEach(Array(day.placeStops.enumerated()), id: \.element.id) { index, stop in
+                    PlaceMapCardView(stop: stop, stopNumber: index + 1, isSelected: selectedPlaceIndex == index)
+                        .frame(width: cardWidth, height: cardHeight)
+                        .tag(index) // For scrollPosition to track
+                        // Add slight scale effect when selected
+                        .scaleEffect(selectedPlaceIndex == index ? 1.0 : 0.95)
+                        .opacity(selectedPlaceIndex == index ? 1.0 : 0.6)
+                        .animation(.spring(response: 0.35, dampingFraction: 0.8), value: selectedPlaceIndex)
+                }
             }
+            .scrollTargetLayout()
         }
-        .tabViewStyle(.page(indexDisplayMode: .never))
-        .frame(height: cardHeight)
+        .safeAreaPadding(.horizontal, (geo.size.width - cardWidth) / 2) // This precisely centers the focused card
+        .scrollTargetBehavior(.viewAligned)
+        .scrollPosition(id: Binding(
+            get: { selectedPlaceIndex },
+            set: { newValue in
+                if let newIndex = newValue {
+                    selectedPlaceIndex = newIndex
+                }
+            }
+        ))
+        .frame(height: cardHeight + 20) // Extra height for scale effect breathing room
     }
 }
 
@@ -330,38 +365,41 @@ struct FullScreenMapView: View {
         let isSelected: Bool
 
         var body: some View {
-            HStack(spacing: 12) {
+            HStack(spacing: 16) {
                 // Left: Photo + Badge
                 ZStack(alignment: .topLeading) {
                     if let photo = stop.photos.first {
-                        RecapPhotoThumbnail(photo: photo, cornerRadius: 10, showIcon: false, targetSize: CGSize(width: 200, height: 200))
-                            .frame(width: 88, height: 88)
+                        RecapPhotoThumbnail(photo: photo, cornerRadius: 12, showIcon: false, targetSize: CGSize(width: 200, height: 200))
+                            .frame(width: 96, height: 96)
                             .clipped()
-                            .cornerRadius(10)
+                            .cornerRadius(12)
+                            .shadow(color: .black.opacity(0.2), radius: 4, x: 0, y: 2)
                     } else {
-                        Rectangle()
-                            .fill(Color.gray.opacity(0.3))
-                            .frame(width: 88, height: 88)
-                            .cornerRadius(10)
-                            .overlay(Image(systemName: "photo").foregroundStyle(.white))
+                        RoundedRectangle(cornerRadius: 12)
+                            .fill(Color.white.opacity(0.1))
+                            .frame(width: 96, height: 96)
+                            .overlay(Image(systemName: "photo").foregroundStyle(.white.opacity(0.5)))
                     }
 
                     // Order Badge
                     Text("\(stopNumber)")
-                        .font(.system(size: 12, weight: .bold))
+                        .font(.system(size: 13, weight: .bold, design: .rounded))
                         .foregroundColor(.white)
-                        .frame(width: 24, height: 24)
-                        .background(Circle().fill(Color.blue))
-                        .overlay(Circle().stroke(Color.white, lineWidth: 1.5))
-                        .offset(x: -6, y: -6)
-                        .shadow(radius: 2)
+                        .frame(width: 28, height: 28)
+                        .background(
+                            Circle()
+                                .fill(LinearGradient(colors: [.blue, .blue.opacity(0.8)], startPoint: .top, endPoint: .bottom))
+                        )
+                        .overlay(Circle().stroke(Color.white, lineWidth: 2))
+                        .offset(x: -8, y: -8)
+                        .shadow(color: .black.opacity(0.3), radius: 3, x: 0, y: 2)
                 }
-                .padding(.leading, 6) // Make room for badge overhang
+                .padding(.leading, 8)
 
                 // Right: Text Content
-                VStack(alignment: .leading, spacing: 4) {
+                VStack(alignment: .leading, spacing: 6) {
                     Text(stop.placeTitle)
-                        .font(.headline)
+                        .font(.system(.headline, design: .serif))
                         .fontWeight(.bold)
                         .foregroundColor(.white)
                         .lineLimit(2)
@@ -369,34 +407,44 @@ struct FullScreenMapView: View {
 
                     if let desc = descriptionText, !desc.isEmpty {
                         Text(desc)
-                            .font(.caption) // .subheadline might be too big for 2 lines
-                            .foregroundColor(.white.opacity(0.8))
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundColor(.white.opacity(0.7))
                             .lineLimit(2)
                             .multilineTextAlignment(.leading)
                             .lineSpacing(2)
                     }
+                    
+                    Spacer(minLength: 0)
                 }
+                .padding(.vertical, 4)
                 .frame(maxWidth: .infinity, alignment: .leading)
+                
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundColor(.white.opacity(0.3))
+                    .padding(.trailing, 4)
             }
             .padding(12)
-            .background(.thinMaterial) // Glass effect
-            .background(Color.black.opacity(0.4)) // Base tint
-            .cornerRadius(16)
+            .background(.ultraThinMaterial)
+            .cornerRadius(20)
             .overlay(
-                RoundedRectangle(cornerRadius: 16)
-                    .stroke(isSelected ? Color.blue : Color.white.opacity(0.1), lineWidth: isSelected ? 2 : 1)
+                RoundedRectangle(cornerRadius: 20)
+                    .stroke(isSelected ? Color.blue.opacity(0.5) : Color.white.opacity(0.12), lineWidth: isSelected ? 2 : 1)
             )
-            .padding(.horizontal, 4) // Breathing room in list
+            .shadow(color: .black.opacity(isSelected ? 0.3 : 0.1), radius: 10, x: 0, y: 5)
         }
 
         private var descriptionText: String? {
-            if let note = stop.noteText, !note.isEmpty {
+            if let note = stop.noteText, !note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 return note
+            }
+            if let photoCaption = stop.photos.first?.caption, !photoCaption.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                return photoCaption
             }
             if let subtitle = stop.placeSubtitle, !subtitle.isEmpty {
                 return subtitle
             }
-            return nil // Don't show anything if just "3 photos" unless desired
+            return nil
         }
     }
 

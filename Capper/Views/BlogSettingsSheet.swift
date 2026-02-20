@@ -98,7 +98,7 @@ struct BlogSettingsSheet: View {
                 Text("Are you sure you want to delete this blog? It will be removed from your profile, but the trip will be available in Trips to customize again.")
             }
             .alert("Remove from Cloud?", isPresented: $showRemoveFromCloudConfirmation) {
-                Button("Remove", role: .destructive) {
+                Button("Yes", role: .destructive) {
                     // Clear cloud URLs from the draft in-place
                     for dayIdx in draft.days.indices {
                         for stopIdx in draft.days[dayIdx].placeStops.indices {
@@ -111,9 +111,9 @@ struct BlogSettingsSheet: View {
                     onSave()
                     dismiss()
                 }
-                Button("Cancel", role: .cancel) {}
+                Button("No", role: .cancel) {}
             } message: {
-                Text("This will remove all uploaded photos from the cloud. Your local blog is not affected.")
+                Text("Are you sure you want to remove this blog from the cloud?")
             }
             .preferredColorScheme(.dark)
         }

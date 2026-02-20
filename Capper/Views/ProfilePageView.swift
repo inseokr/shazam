@@ -44,10 +44,12 @@ struct ProfilePageView: View {
     @State private var showMyMap = false
     /// Local navigation state — avoids conflicting with the global selectedCreatedRecap binding
     @State private var selectedBlogToOpen: CreatedRecapBlog? = nil
+    @State private var isSearchActive = false
+    @FocusState private var isSearchFocused: Bool
     
     /// Only cloud-published blogs appear on the profile.
     private var publishedBlogs: [CreatedRecapBlog] {
-        createdRecapStore.cloudPublishedBlogs
+        createdRecapStore.cloudPublishedBlogs.sorted { ($0.tripStartDate ?? .distantPast) > ($1.tripStartDate ?? .distantPast) }
     }
 
     private var uniqueCountries: [String] {
@@ -57,10 +59,20 @@ struct ProfilePageView: View {
     }
 
     private var filteredBlogs: [CreatedRecapBlog] {
-        guard let countryID = selectedCountryID else {
-            return publishedBlogs
+        var result = publishedBlogs
+        if let countryID = selectedCountryID {
+            result = result.filter { $0.countryName == countryID }
         }
-        return publishedBlogs.filter { $0.countryName == countryID }
+        
+        let query = viewModel.searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if !query.isEmpty {
+            result = result.filter { blog in
+                (blog.title.lowercased().contains(query)) ||
+                (blog.countryName?.lowercased().contains(query) == true)
+            }
+        }
+        
+        return result
     }
 
     var body: some View {
@@ -102,44 +114,52 @@ struct ProfilePageView: View {
                     }
                 }
             }
-            .padding(.bottom, ProfileTheme.Spacing.massive)
+            .padding(.bottom, 140)
         }
         
-        Button {
-            showMyMap = true
-        } label: {
-            Image(systemName: "map.fill")
-                .font(.title2)
-                .foregroundColor(.white)
-                .frame(width: 52, height: 52)
-                .background(Color.blue)
-                .clipShape(Capsule())
-                .shadow(color: Color.black.opacity(0.3), radius: 4, x: 0, y: 2)
+        VStack(spacing: 0) {
+            HStack {
+                Spacer()
+                Button {
+                    showMyMap = true
+                } label: {
+                    Image(systemName: "map.fill")
+                        .font(.title2)
+                        .foregroundColor(.white)
+                        .frame(width: 52, height: 52)
+                        .background(Color.blue)
+                        .clipShape(Capsule())
+                        .shadow(color: Color.black.opacity(0.3), radius: 4, x: 0, y: 2)
+                }
+                .buttonStyle(.plain)
+                .padding(.trailing, 20)
+                .padding(.bottom, 16)
+            }
+            searchBar
         }
-        .buttonStyle(.plain)
-        .padding(.trailing, 20)
-        .padding(.bottom, 24)
+        .allowsHitTesting(true)
         }
         .background(Color(uiColor: .systemBackground))
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
-                Button {
-                    Task {
-                        await prepareShareContent()
-                        showShare = true
+                HStack(spacing: 16) {
+                    Button {
+                        Task {
+                            await prepareShareContent()
+                            showShare = true
+                        }
+                    } label: {
+                        Image(systemName: "square.and.arrow.up")
+                            .foregroundColor(.primary)
                     }
-                } label: {
-                    Image(systemName: "square.and.arrow.up")
-                        .foregroundColor(.primary)
-                }
-            }
-            ToolbarItem(placement: .topBarTrailing) {
-                Button {
-                    // TODO: Open notifications
-                } label: {
-                    Image(systemName: "bell")
-                        .foregroundColor(.primary)
+                    
+                    Button {
+                        // TODO: Open notifications
+                    } label: {
+                        Image(systemName: "bell")
+                            .foregroundColor(.primary)
+                    }
                 }
             }
         }
@@ -164,6 +184,37 @@ struct ProfilePageView: View {
 
     @State private var showShare = false
     @State private var shareItems: [Any] = []
+
+    private var searchBar: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "magnifyingglass")
+                .foregroundColor(.secondary)
+            TextField("Search city or blog title", text: $viewModel.searchText)
+                .foregroundColor(.primary)
+                .autocorrectionDisabled()
+                .focused($isSearchFocused)
+                .onTapGesture {
+                    isSearchActive = true
+                }
+            if isSearchActive {
+                Button {
+                    viewModel.searchText = ""
+                    isSearchFocused = false
+                    isSearchActive = false
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundColor(.secondary)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(.horizontal, 16)
+        .frame(height: 56)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12))
+        .padding(.horizontal, 20)
+        .padding(.bottom, 12)
+    }
+
 
     private func prepareShareContent() async {
         // Simple share content for the profile
@@ -460,24 +511,49 @@ struct BlogCard: View {
 
             // 16:9 Cover Image
             GeometryReader { proxy in
-                if let assetId = blog.coverAssetIdentifier, !assetId.isEmpty {
-                    AssetPhotoView(
-                        assetIdentifier: assetId,
-                        cornerRadius: 0,
-                        targetSize: CGSize(width: proxy.size.width * 2, height: proxy.size.width * 2 * (9/16))
-                    )
-                    .frame(width: proxy.size.width, height: proxy.size.width * (9/16))
-                    .clipped()
-                } else if let uiImage = UIImage(named: blog.coverImageName) ?? UIImage(contentsOfFile: blog.coverImageName) {
-                    Image(uiImage: uiImage)
-                        .resizable()
-                        .scaledToFill()
-                        .frame(width: proxy.size.width, height: proxy.size.width * (9/16))
-                        .clipped()
-                } else {
-                    Rectangle()
-                        .fill(Color(uiColor: .secondarySystemBackground))
-                        .frame(width: proxy.size.width, height: proxy.size.width * (9/16))
+                ZStack(alignment: .topTrailing) {
+                    Group {
+                        if let assetId = blog.coverAssetIdentifier, !assetId.isEmpty {
+                            AssetPhotoView(
+                                assetIdentifier: assetId,
+                                cornerRadius: 0,
+                                targetSize: CGSize(width: proxy.size.width * 2, height: proxy.size.width * 2 * (9/16))
+                            )
+                            .frame(width: proxy.size.width, height: proxy.size.width * (9/16))
+                            .clipped()
+                        } else if let uiImage = UIImage(named: blog.coverImageName) ?? UIImage(contentsOfFile: blog.coverImageName) {
+                            Image(uiImage: uiImage)
+                                .resizable()
+                                .scaledToFill()
+                                .frame(width: proxy.size.width, height: proxy.size.width * (9/16))
+                                .clipped()
+                        } else {
+                            Rectangle()
+                                .fill(Color(uiColor: .secondarySystemBackground))
+                                .frame(width: proxy.size.width, height: proxy.size.width * (9/16))
+                        }
+                    }
+                    
+                    // Share Button overlay
+                    if let url = URL(string: "https://www.linkedspaces.com/bloggo/recap?id=\(blog.sourceTripId.uuidString)") {
+                        ShareLink(
+                            item: url,
+                            subject: Text(blog.title),
+                            message: Text("\(blog.title) – My Recap Blog")
+                        ) {
+                            Image(systemName: "square.and.arrow.up")
+                                .font(.system(size: 14, weight: .semibold))
+                                .foregroundColor(.white)
+                                .padding(10)
+                                .background(Color.black.opacity(0.4))
+                                .clipShape(Circle())
+                                .overlay(
+                                    Circle()
+                                        .stroke(Color.white.opacity(0.2), lineWidth: 1)
+                                )
+                        }
+                        .padding(ProfileTheme.Spacing.sm)
+                    }
                 }
             }
             .aspectRatio(16/9, contentMode: .fit)
@@ -508,6 +584,13 @@ struct BlogCard: View {
                     .foregroundColor(.primary.opacity(0.7))
                     .lineLimit(2)
                     .lineSpacing(4)
+                
+                // Published Date
+                Text("Published \(blog.createdAt.formatted(date: .numeric, time: .omitted))".uppercased())
+                    .font(ProfileTheme.Typography.metadata)
+                    .foregroundColor(.secondary)
+                    .kerning(0.5)
+                    .padding(.top, 2)
             }
             .padding(.horizontal, ProfileTheme.Spacing.md)
         }

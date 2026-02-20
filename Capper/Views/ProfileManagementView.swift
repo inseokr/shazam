@@ -27,13 +27,13 @@ struct ProfileManagementView: View {
     private var publishedBlogs: [CreatedRecapBlog] {
         createdRecapStore.recents
             .filter { createdRecapStore.isBlogInCloud(blogId: $0.sourceTripId) }
-            .sorted { $0.createdAt > $1.createdAt }
+            .sorted { ($0.tripStartDate ?? .distantPast) > ($1.tripStartDate ?? .distantPast) }
     }
 
     private var notUploadedBlogs: [CreatedRecapBlog] {
         createdRecapStore.recents
             .filter { !createdRecapStore.isBlogInCloud(blogId: $0.sourceTripId) }
-            .sorted { $0.createdAt > $1.createdAt }
+            .sorted { ($0.tripStartDate ?? .distantPast) > ($1.tripStartDate ?? .distantPast) }
     }
 
     private var notUploadedCountries: [String] {
@@ -195,14 +195,14 @@ struct ProfileManagementView: View {
                 Text(uploadErrorMessage)
             }
             .alert("Remove from Cloud?", isPresented: $showRemoveConfirmation, presenting: blogPendingRemoval) { blog in
-                Button("Yes, Remove", role: .destructive) {
+                Button("Yes", role: .destructive) {
                     removeFromCloud(blog)
                 }
                 Button("No", role: .cancel) {
                     blogPendingRemoval = nil
                 }
             } message: { blog in
-                Text("Are you sure you want to remove \"\(blog.title)\" from the cloud? It will no longer appear on your public profile.")
+                Text("Are you sure you want to remove this blog from the cloud?")
             }
         }
     }

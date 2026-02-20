@@ -28,23 +28,22 @@ struct ProfileMapView: View {
         ZStack(alignment: .top) {
             profileMap
             
-            VStack(spacing: 0) {
-                if isSearchActive {
-                    searchBar
-                        .padding(.top, 12)
-                } else {
-                    countryFilterBar
-                }
+            if !isSearchActive {
+                countryFilterBar
             }
             
-            // Bottom Trip List
+            // Bottom UI
             VStack {
                 Spacer()
-                bottomTripList
+                if isSearchActive {
+                    searchBar
+                        .padding(.bottom, 20)
+                } else {
+                    bottomTripList
+                }
             }
-            .ignoresSafeArea(.keyboard)
         }
-        .ignoresSafeArea(edges: .bottom)
+        .ignoresSafeArea(.container, edges: .bottom)
         .navigationTitle("My Map")
         .navigationBarTitleDisplayMode(.inline)
         .preferredColorScheme(.dark)
@@ -92,6 +91,7 @@ struct ProfileMapView: View {
         .onMapCameraChange(frequency: .onEnd) { context in
             viewModel.mapRegion = context.region
         }
+        .ignoresSafeArea(.keyboard)
     }
 
     @MapContentBuilder
@@ -172,12 +172,13 @@ struct ProfileMapView: View {
     
     @State private var scrolledTripID: UUID?
 
-    // MARK: - Bottom Trip List
-    
     private var bottomTripList: some View {
-        ScrollViewReader { proxy in
+        GeometryReader { geo in
+            let cardWidth = min(geo.size.width * 0.80, 340)
+            let cardHeight: CGFloat = 104
+            
             ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 12) {
+                LazyHStack(spacing: 16) {
                     ForEach(viewModel.visibleTrips, id: \.sourceTripId) { trip in
                         ProfileMapCardView(
                             blog: trip,
@@ -193,13 +194,15 @@ struct ProfileMapView: View {
                             }
                         )
                         .id(trip.sourceTripId)
-                        .frame(width: 300)
+                        .frame(width: cardWidth, height: cardHeight)
+                        .scaleEffect(viewModel.selectedTripID == trip.sourceTripId ? 1.0 : 0.95)
+                        .opacity(viewModel.selectedTripID == trip.sourceTripId ? 1.0 : 0.6)
+                        .animation(.spring(response: 0.35, dampingFraction: 0.8), value: viewModel.selectedTripID)
                     }
                 }
-                .padding(.horizontal, 16)
-                .padding(.bottom, 20) // Safe area breathing room
                 .scrollTargetLayout()
             }
+            .safeAreaPadding(.horizontal, (geo.size.width - cardWidth) / 2)
             .scrollTargetBehavior(.viewAligned)
             .scrollPosition(id: $scrolledTripID)
             .onChange(of: scrolledTripID) { _, newID in
@@ -215,13 +218,10 @@ struct ProfileMapView: View {
             .onChange(of: viewModel.selectedTripID) { _, newID in
                 if let id = newID {
                     scrolledTripID = id
-                    withAnimation {
-                        proxy.scrollTo(id, anchor: .center)
-                    }
                 }
             }
         }
-        .frame(height: 140)
+        .frame(height: 124)
     }
 
     private func countryPill(label: String, isSelected: Bool, action: @escaping () -> Void) -> some View {
@@ -251,21 +251,24 @@ private struct ProfileMapCardView: View {
             HStack(spacing: 12) {
                 coverImage
                 
-                HStack(spacing: 12) {
+                VStack(alignment: .leading, spacing: 4) {
                     tripInfo
-                    chevronButton
                 }
                 .padding(.vertical, 12)
-                .padding(.trailing, 12)
+                
+                Spacer()
+                
+                chevronButton
+                    .padding(.trailing, 12)
             }
             .frame(height: 104)
             .background(.ultraThinMaterial)
-            .background(Color.black.opacity(0.3))
-            .cornerRadius(16)
+            .cornerRadius(20)
             .overlay(
-                RoundedRectangle(cornerRadius: 16)
-                    .stroke(isSelected ? Color.blue : Color.white.opacity(0.1), lineWidth: isSelected ? 2 : 1)
+                RoundedRectangle(cornerRadius: 20)
+                    .stroke(isSelected ? Color.blue.opacity(0.5) : Color.white.opacity(0.12), lineWidth: isSelected ? 2 : 1)
             )
+            .shadow(color: .black.opacity(isSelected ? 0.3 : 0.1), radius: 10, x: 0, y: 5)
         }
         .buttonStyle(.plain)
     }
@@ -277,13 +280,14 @@ private struct ProfileMapCardView: View {
             targetSize: CGSize(width: 200, height: 200)
         )
         .frame(width: 104, height: 104)
+        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
         .clipped()
     }
 
     private var tripInfo: some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(blog.title)
-                .font(.headline)
+                .font(.system(.subheadline, design: .serif))
                 .fontWeight(.bold)
                 .foregroundColor(.white)
                 .lineLimit(2)
@@ -292,29 +296,33 @@ private struct ProfileMapCardView: View {
             HStack(spacing: 4) {
                 if let country = blog.countryName {
                     Text(country)
-                        .font(.caption)
-                        .fontWeight(.medium)
+                        .font(.system(size: 11, weight: .bold))
                         .foregroundColor(.white.opacity(0.8))
                     Text("•")
-                        .font(.caption)
+                        .font(.caption2)
                         .foregroundColor(.white.opacity(0.4))
                 }
                 Text(blog.tripDateRangeText ?? "")
-                    .font(.caption)
+                    .font(.system(size: 11, weight: .medium))
                     .foregroundColor(.white.opacity(0.6))
             }
+
+            if let caption = blog.caption, !caption.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                Text(caption)
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundColor(.white.opacity(0.5))
+                    .lineLimit(1)
+            }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var chevronButton: some View {
         Button(action: onNavigate) {
             Image(systemName: "chevron.right")
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundColor(.white.opacity(0.6))
-                .frame(width: 32, height: 32)
-                .background(Color.white.opacity(0.1))
-                .clipShape(Circle())
+                .font(.system(size: 12, weight: .bold))
+                .foregroundColor(.white)
+                .frame(width: 28, height: 28)
+                .background(Circle().fill(Color.white.opacity(0.15)))
         }
     }
 }

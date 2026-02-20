@@ -48,6 +48,7 @@ struct RecapBlogPageView: View {
     @State private var showUploadSuccessBanner = false
     @State private var showUploadErrorAlert = false
     @State private var uploadErrorMessage = ""
+    @State private var showRemoveFromCloudAlert = false
 
     private enum UndoAction {
         case deletePlace(dayId: UUID, stop: PlaceStop, index: Int)
@@ -69,348 +70,179 @@ struct RecapBlogPageView: View {
 
     var body: some View {
         GeometryReader { screenGeo in
-            Group {
-                if draft.days.isEmpty && initialTrip != nil {
-                    ProgressView("Loading…")
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                } else {
-                    mainContent(screenHeight: screenGeo.size.height)
-                }
-            }
-            .navigationBarBackButtonHidden(true)
-            .navigationTitle(createdRecapStore.recents.first(where: { $0.sourceTripId == blogId })?.lastEditedAt == nil ? "Draft" : "Recap Blog")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbarBackground(.hidden, for: .navigationBar)
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button {
-                        if isEditMode {
-                            let isFirstCreation = createdRecapStore.recents.first(where: { $0.sourceTripId == blogId })?.lastEditedAt == nil
-                            if isFirstCreation {
-                                showNewBlogExitConfirmation = true
-                            } else if draftSnapshot != nil && draft != draftSnapshot {
-                                showUnsavedChangesAlert = true
-                            } else {
-                                dismiss()
-                            }
-                        } else {
-                            dismiss()
-                        }
-                    } label: {
-                        HStack(spacing: 4) {
-                            Image(systemName: "chevron.left")
-                                .font(.body.weight(.semibold))
-                        }
-                    }
-                }
-                ToolbarItem(placement: .topBarTrailing) {
-                    if isEditMode {
-                        Button {
-                            saveDraft()
-                            isEditMode = false
-                        } label: {
-                            Text("Save")
-                                .font(.subheadline)
-                                .fontWeight(.semibold)
-                                .foregroundColor(.white)
-                                .padding(.horizontal, 12)
-                                .padding(.vertical, 6)
-                                .background(Color.blue)
-                                .clipShape(Capsule())
-                                .fixedSize()
-                        }
-                        .buttonStyle(.plain)
-                    } else {
-                        HStack(spacing: 16) {
-                            Button {
-                                uploadBlogPhotos()
-                            } label: {
-                                if isUploading {
-                                    ProgressView()
-                                        .tint(.white)
-                                        .frame(width: 22, height: 22)
-                                } else {
-                                    Image("Upload Cloud Icon")
-                                        .renderingMode(.template)
-                                        .resizable()
-                                        .scaledToFit()
-                                        .frame(width: 22, height: 22)
-                                        .foregroundColor(blogIsInCloud ? .green : .white)
-                                }
-                            }
-                            .buttonStyle(.plain)
-                            .disabled(isUploading)
-                            Button {
-                                showBlogSettings = true
-                            } label: {
-                                Image(systemName: "gearshape")
-                            }
-                            .buttonStyle(.plain)
-                        }
-                    }
-                }
-            }
-            .sheet(isPresented: $showShareSheet) {
-                ShareSheet(items: shareItems)
-            }
-            .sheet(isPresented: $showBlogSettings) {
-                BlogSettingsSheet(
-                    draft: $draft,
-                    onSave: { saveDraft() },
-                    onEditMode: {
-                        showBlogSettings = false
-                        isEditMode = true
-                    },
-                    onDelete: {
-                        createdRecapStore.deleteBlog(sourceTripId: blogId)
-                        dismiss()
-                    },
-                    onRemoveFromCloud: {
-                        createdRecapStore.removeFromCloud(blogId: blogId)
-                    }
-                )
-            }
-            .sheet(isPresented: $showTitleChange) {
-                BlogTitleChangeSheet(title: $draft.title) {
-                    showTitleChange = false
-                }
-            }
-            .alert("Welcome to Your Blog!", isPresented: $showSaveTipAlert) {
-                Button("Don't Show Again") {
-                    showFirstTimeSaveTip = false
-                }
-                Button("Okay", role: .cancel) { }
-            } message: {
-                Text("Tap Save when you're done editing to keep your changes and unlock your map routes.")
-            }
-            .alert("Save Before Leaving?", isPresented: $showUnsavedChangesAlert) {
-                Button("Save & Leave") {
-                    saveDraft()
-                    dismiss()
-                }
-                Button("Leave Without Saving", role: .destructive) {
-                    dismiss()
-                }
-                Button("Cancel", role: .cancel) { }
-            } message: {
-                Text("You have unsaved changes. Would you like to save before leaving?")
-            }
-            .sheet(isPresented: $showCoverPhotoPicker) {
-                BlogCoverPhotoPickerView(
-                    photos: allIncludedPhotos,
-                    selectedIdentifier: $draft.selectedCoverPhotoIdentifier,
-                    saveButtonTitle: "Done",
-                    onSave: {
-                        showCoverPhotoPicker = false
-                    }
-                )
-            }
-            .alert("Save Before Leaving?", isPresented: $showNewBlogExitConfirmation) {
-                Button("Save Draft") {
-                    createdRecapStore.saveBlogDetail(draft, asDraft: true)
-                    createdRecapStore.showDraftSavedToast = true
-                    dismiss()
-                }
-                Button("Don't Save", role: .destructive) {
-                    createdRecapStore.deleteBlog(sourceTripId: blogId)
-                    dismiss()
-                }
-                Button("Cancel", role: .cancel) { }
-            } message: {
-                Text("Do you want to save this blog as a draft before leaving?")
-            }
-            .onAppear {
-                if createdRecapStore.isLoading {
-                    createdRecapStore.$isLoading
-                        .filter { !$0 }
-                        .first()
-                        .receive(on: RunLoop.main)
-                        .sink { _ in
-                            self.loadDraftIfNeeded()
-                            self.checkFirstTimeTip()
-                        }
-                        .store(in: &cancellables)
-                } else {
-                    loadDraftIfNeeded()
-                    checkFirstTimeTip()
-                }
-            }
-            .onChange(of: isEditMode) { _, editing in
-                if editing {
-                    draftSnapshot = draft
-                }
-            }
-            .onChange(of: draft) { _, newValue in
-                if isEditMode {
-                    AutosaveManager.shared.scheduleSave(detail: newValue)
-                }
-            }
-            .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in
-                withAnimation { isKeyboardVisible = true }
-            }
-            .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in
-                withAnimation { isKeyboardVisible = false }
-            }
-            .sheet(item: $overflowStop) { item in
-                PlaceStopActionSheet(
-                    placeTitle: item.stop.placeTitle,
-                    onEditName: { showEditNameForStop = item.stop },
-                    onEditPlace: { isEditMode = true },
-                    onRemoveFromBlog: { removePlaceStop(dayId: item.dayId, stopId: item.stop.id) }
-                )
-            }
-            .sheet(item: $showEditNameForStop) { stop in
-                EditPlaceStopNameSheet(placeTitle: bindingForPlaceTitle(stopId: stop.id), location: stop.representativeLocation?.clCoordinate ?? stop.photos.first?.location?.clCoordinate, onSave: { newTitle in
-                    updatePlaceTitle(stopId: stop.id, to: newTitle)
-                })
-            }
-            .sheet(item: $showManagePhotosForStop) { pair in
-                ManagePhotosView(
-                    placeTitle: placeStop(dayId: pair.dayId, stopId: pair.stopId)?.placeTitle ?? "Photos",
-                    photos: bindingForPhotos(dayId: pair.dayId, stopId: pair.stopId)
-                )
-            }
-            .fullScreenCover(isPresented: $showEditPhotoFlow) {
-                EditBlogPhotoFlowView(blogId: blogId, onDismiss: { showEditPhotoFlow = false })
-                    .environmentObject(createdRecapStore)
-            }
-            .fullScreenCover(item: $fullScreenMapDay) { day in
-                FullScreenMapView(day: day) {
-                    fullScreenMapDay = nil
-                }
-            }
-            .sheet(item: $placePhotoModalItem) { item in
-                placePhotoModalSheet(item: item)
-            }
+            bodyContent(screenHeight: screenGeo.size.height)
+        }
+    }
 
-            .overlay(alignment: .top) {
-                if showFirstSaveBanner {
-                    ZStack(alignment: .top) {
-                        // Dimmed background
-                        Color.black.opacity(0.4)
-                            .ignoresSafeArea()
-                            .onTapGesture {
-                                withAnimation { showFirstSaveBanner = false }
-                            }
-                        
-                        // Notification Banner
-                        HStack(spacing: 12) {
-                            Image(systemName: "checkmark.circle.fill")
-                                .font(.title2)
-                                .foregroundColor(.green)
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("Draft has been saved")
-                                    .font(.subheadline)
-                                    .fontWeight(.semibold)
-                                    .foregroundColor(.white)
-                                Text("Your recap blog is ready.")
-                                    .font(.caption)
-                                    .foregroundColor(.white.opacity(0.75))
-                            }
-                            Spacer()
-                            Button {
-                                withAnimation { showFirstSaveBanner = false }
-                            } label: {
-                                Image(systemName: "xmark.circle.fill")
-                                    .font(.title3)
-                                    .foregroundStyle(.white.opacity(0.5))
-                            }
-                        }
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 14)
-                        .background(
-                            RoundedRectangle(cornerRadius: 14)
-                                .fill(.ultraThinMaterial)
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 14)
-                                        .stroke(Color.white.opacity(0.12), lineWidth: 1)
-                                )
-                        )
-                        .padding(.horizontal, 20)
-                        .padding(.top, 50)
-                    }
-                    .transition(.opacity) // Fade in/out for the whole ZStack (dimming + banner)
-                }
-            }
+    private func bodyContent(screenHeight: CGFloat) -> some View {
+        coreContent(screenHeight: screenHeight)
+            .overlay(alignment: .top) { firstSaveBannerOverlay }
             .animation(.spring(response: 0.4, dampingFraction: 0.8), value: showFirstSaveBanner)
-            .overlay(alignment: .top) {
-                if isUploading {
-                    HStack(spacing: 12) {
-                        ProgressView()
-                            .tint(.white)
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Uploading to cloud…")
-                                .font(.subheadline)
-                                .fontWeight(.semibold)
-                                .foregroundColor(.white)
-                            Text("\(uploadProgress.current) of \(uploadProgress.total) photos")
-                                .font(.caption)
-                                .foregroundColor(.white.opacity(0.75))
-                        }
-                        Spacer()
-                    }
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 14)
-                    .background(
-                        RoundedRectangle(cornerRadius: 14)
-                            .fill(.ultraThinMaterial)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 14)
-                                    .stroke(Color.white.opacity(0.12), lineWidth: 1)
-                            )
-                    )
-                    .padding(.horizontal, 20)
-                    .padding(.top, 50)
-                    .transition(.opacity)
-                }
-            }
+            .overlay(alignment: .top) { uploadingBannerOverlay }
             .animation(.spring(response: 0.4, dampingFraction: 0.8), value: isUploading)
-            .overlay(alignment: .top) {
-                if showUploadSuccessBanner {
-                    HStack(spacing: 12) {
-                        Image(systemName: "checkmark.icloud.fill")
-                            .font(.title2)
-                            .foregroundColor(.green)
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Uploaded to cloud")
-                                .font(.subheadline)
-                                .fontWeight(.semibold)
-                                .foregroundColor(.white)
-                            Text("All photos are now in the cloud.")
-                                .font(.caption)
-                                .foregroundColor(.white.opacity(0.75))
-                        }
-                        Spacer()
-                        Button {
-                            withAnimation { showUploadSuccessBanner = false }
-                        } label: {
-                            Image(systemName: "xmark.circle.fill")
-                                .font(.title3)
-                                .foregroundStyle(.white.opacity(0.5))
-                        }
-                    }
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 14)
-                    .background(
-                        RoundedRectangle(cornerRadius: 14)
-                            .fill(.ultraThinMaterial)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 14)
-                                    .stroke(Color.white.opacity(0.12), lineWidth: 1)
-                            )
-                    )
-                    .padding(.horizontal, 20)
-                    .padding(.top, 50)
-                    .transition(.opacity)
-                }
-            }
+            .overlay(alignment: .top) { uploadSuccessBannerOverlay }
             .animation(.spring(response: 0.4, dampingFraction: 0.8), value: showUploadSuccessBanner)
             .alert("Upload Failed", isPresented: $showUploadErrorAlert) {
                 Button("OK", role: .cancel) { }
             } message: {
                 Text(uploadErrorMessage)
             }
+            .alert("Remove from Cloud?", isPresented: $showRemoveFromCloudAlert) {
+                Button("Yes", role: .destructive) {
+                    removeCloudURLsFromDraft()
+                }
+                Button("No", role: .cancel) { }
+            } message: {
+                Text("This will remove your blog from the cloud. Your local blog and photos will not be affected.")
+            }
             .preferredColorScheme(.dark)
+    }
+
+    private func coreContent(screenHeight: CGFloat) -> some View {
+        Group {
+            if draft.days.isEmpty && initialTrip != nil {
+                ProgressView("Loading…")
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                mainContent(screenHeight: screenHeight)
+            }
+        }
+        .navigationBarBackButtonHidden(true)
+        .navigationTitle(navTitle)
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbarBackground(.hidden, for: .navigationBar)
+        .toolbar { toolbarContent }
+        .sheet(isPresented: $showShareSheet) {
+            ShareSheet(items: shareItems)
+        }
+        .sheet(isPresented: $showBlogSettings) {
+            BlogSettingsSheet(
+                draft: $draft,
+                onSave: { saveDraft() },
+                onEditMode: {
+                    showBlogSettings = false
+                    isEditMode = true
+                },
+                onDelete: {
+                    createdRecapStore.deleteBlog(sourceTripId: blogId)
+                    dismiss()
+                },
+                onRemoveFromCloud: {
+                    createdRecapStore.removeFromCloud(blogId: blogId)
+                }
+            )
+        }
+        .sheet(isPresented: $showTitleChange) {
+            BlogTitleChangeSheet(title: $draft.title) {
+                showTitleChange = false
+            }
+        }
+        .alert("Welcome to Your Blog!", isPresented: $showSaveTipAlert) {
+            Button("Don't Show Again") {
+                showFirstTimeSaveTip = false
+            }
+            Button("Okay", role: .cancel) { }
+        } message: {
+            Text("Tap Save when you're done editing to keep your changes and unlock your map routes.")
+        }
+        .alert("Save Before Leaving?", isPresented: $showUnsavedChangesAlert) {
+            Button("Save & Leave") {
+                saveDraft()
+                dismiss()
+            }
+            Button("Leave Without Saving", role: .destructive) {
+                dismiss()
+            }
+            Button("Cancel", role: .cancel) { }
+        } message: {
+            Text("You have unsaved changes. Would you like to save before leaving?")
+        }
+        .sheet(isPresented: $showCoverPhotoPicker) {
+            BlogCoverPhotoPickerView(
+                photos: allIncludedPhotos,
+                selectedIdentifier: $draft.selectedCoverPhotoIdentifier,
+                saveButtonTitle: "Done",
+                onSave: {
+                    showCoverPhotoPicker = false
+                }
+            )
+        }
+        .alert("Save Before Leaving?", isPresented: $showNewBlogExitConfirmation) {
+            Button("Save Draft") {
+                createdRecapStore.saveBlogDetail(draft, asDraft: true)
+                createdRecapStore.showDraftSavedToast = true
+                dismiss()
+            }
+            Button("Don't Save", role: .destructive) {
+                createdRecapStore.deleteBlog(sourceTripId: blogId)
+                dismiss()
+            }
+            Button("Cancel", role: .cancel) { }
+        } message: {
+            Text("Do you want to save this blog as a draft before leaving?")
+        }
+        .onAppear {
+            if createdRecapStore.isLoading {
+                createdRecapStore.$isLoading
+                    .filter { !$0 }
+                    .first()
+                    .receive(on: RunLoop.main)
+                    .sink { _ in
+                        self.loadDraftIfNeeded()
+                        self.checkFirstTimeTip()
+                    }
+                    .store(in: &cancellables)
+            } else {
+                loadDraftIfNeeded()
+                checkFirstTimeTip()
+            }
+        }
+        .onChange(of: isEditMode) { _, editing in
+            if editing {
+                draftSnapshot = draft
+            }
+        }
+        .onChange(of: draft) { _, newValue in
+            if isEditMode {
+                AutosaveManager.shared.scheduleSave(detail: newValue)
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in
+            withAnimation { isKeyboardVisible = true }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in
+            withAnimation { isKeyboardVisible = false }
+        }
+        .sheet(item: $overflowStop) { item in
+            PlaceStopActionSheet(
+                placeTitle: item.stop.placeTitle,
+                onEditName: { showEditNameForStop = item.stop },
+                onEditPlace: { isEditMode = true },
+                onRemoveFromBlog: { removePlaceStop(dayId: item.dayId, stopId: item.stop.id) }
+            )
+        }
+        .sheet(item: $showEditNameForStop) { stop in
+            EditPlaceStopNameSheet(placeTitle: bindingForPlaceTitle(stopId: stop.id), location: stop.representativeLocation?.clCoordinate ?? stop.photos.first?.location?.clCoordinate, onSave: { newTitle in
+                updatePlaceTitle(stopId: stop.id, to: newTitle)
+            })
+        }
+        .sheet(item: $showManagePhotosForStop) { pair in
+            ManagePhotosView(
+                placeTitle: placeStop(dayId: pair.dayId, stopId: pair.stopId)?.placeTitle ?? "Photos",
+                photos: bindingForPhotos(dayId: pair.dayId, stopId: pair.stopId)
+            )
+        }
+        .fullScreenCover(isPresented: $showEditPhotoFlow) {
+            EditBlogPhotoFlowView(blogId: blogId, onDismiss: { showEditPhotoFlow = false })
+                .environmentObject(createdRecapStore)
+        }
+        .fullScreenCover(item: $fullScreenMapDay) { day in
+            FullScreenMapView(day: day) {
+                fullScreenMapDay = nil
+            }
+        }
+        .sheet(item: $placePhotoModalItem) { item in
+            placePhotoModalSheet(item: item)
         }
     }
 
@@ -1125,6 +957,222 @@ struct RecapBlogPageView: View {
                 self.draftSnapshot = self.draft
             }
         }
+    }
+
+    // MARK: - Extracted Body Helpers
+
+    private var navTitle: String {
+        createdRecapStore.recents.first(where: { $0.sourceTripId == blogId })?.lastEditedAt == nil ? "Draft" : "Recap Blog"
+    }
+
+    @ToolbarContentBuilder
+    private var toolbarContent: some ToolbarContent {
+        ToolbarItem(placement: .topBarLeading) {
+            Button {
+                if isEditMode {
+                    let isFirstCreation = createdRecapStore.recents.first(where: { $0.sourceTripId == blogId })?.lastEditedAt == nil
+                    if isFirstCreation {
+                        showNewBlogExitConfirmation = true
+                    } else if draftSnapshot != nil && draft != draftSnapshot {
+                        showUnsavedChangesAlert = true
+                    } else {
+                        dismiss()
+                    }
+                } else {
+                    dismiss()
+                }
+            } label: {
+                Image(systemName: "chevron.left")
+                    .font(.body.weight(.semibold))
+            }
+            .padding(.leading, 12)
+        }
+        ToolbarItem(placement: .topBarTrailing) {
+            if isEditMode {
+                Button {
+                    saveDraft()
+                    isEditMode = false
+                } label: {
+                    Text("Save")
+                        .font(.subheadline)
+                        .fontWeight(.semibold)
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .background(Color.blue)
+                        .clipShape(Capsule())
+                        .fixedSize()
+                }
+                .buttonStyle(.plain)
+            } else {
+                HStack(spacing: 16) {
+                    Button {
+                        if blogIsInCloud {
+                            showRemoveFromCloudAlert = true
+                        } else {
+                            uploadBlogPhotos()
+                        }
+                    } label: {
+                        if isUploading {
+                            ProgressView()
+                                .tint(.white)
+                                .frame(width: 22, height: 22)
+                        } else {
+                            Image("Upload Cloud Icon")
+                                .renderingMode(.template)
+                                .resizable()
+                                .scaledToFit()
+                                .frame(width: 22, height: 22)
+                                .foregroundColor(blogIsInCloud ? .green : .white)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(isUploading)
+                    .padding(.leading, 12)
+
+                    Button {
+                        showBlogSettings = true
+                    } label: {
+                        Image(systemName: "gearshape")
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var firstSaveBannerOverlay: some View {
+        if showFirstSaveBanner {
+            ZStack(alignment: .top) {
+                Color.black.opacity(0.4)
+                    .ignoresSafeArea()
+                    .onTapGesture {
+                        withAnimation { showFirstSaveBanner = false }
+                    }
+                HStack(spacing: 12) {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.title2)
+                        .foregroundColor(.green)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Draft has been saved")
+                            .font(.subheadline)
+                            .fontWeight(.semibold)
+                            .foregroundColor(.white)
+                        Text("Your recap blog is ready.")
+                            .font(.caption)
+                            .foregroundColor(.white.opacity(0.75))
+                    }
+                    Spacer()
+                    Button {
+                        withAnimation { showFirstSaveBanner = false }
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.title3)
+                            .foregroundStyle(.white.opacity(0.5))
+                    }
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 14)
+                .background(
+                    RoundedRectangle(cornerRadius: 14)
+                        .fill(.ultraThinMaterial)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 14)
+                                .stroke(Color.white.opacity(0.12), lineWidth: 1)
+                        )
+                )
+                .padding(.horizontal, 20)
+                .padding(.top, 50)
+            }
+            .transition(.opacity)
+        }
+    }
+
+    @ViewBuilder
+    private var uploadingBannerOverlay: some View {
+        if isUploading {
+            HStack(spacing: 12) {
+                ProgressView()
+                    .tint(.white)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Uploading to cloud…")
+                        .font(.subheadline)
+                        .fontWeight(.semibold)
+                        .foregroundColor(.white)
+                    Text("\(uploadProgress.current) of \(uploadProgress.total) photos")
+                        .font(.caption)
+                        .foregroundColor(.white.opacity(0.75))
+                }
+                Spacer()
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 14)
+            .background(
+                RoundedRectangle(cornerRadius: 14)
+                    .fill(.ultraThinMaterial)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 14)
+                            .stroke(Color.white.opacity(0.12), lineWidth: 1)
+                    )
+            )
+            .padding(.horizontal, 20)
+            .padding(.top, 50)
+            .transition(.opacity)
+        }
+    }
+
+    @ViewBuilder
+    private var uploadSuccessBannerOverlay: some View {
+        if showUploadSuccessBanner {
+            HStack(spacing: 12) {
+                Image(systemName: "checkmark.icloud.fill")
+                    .font(.title2)
+                    .foregroundColor(.green)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Uploaded to cloud")
+                        .font(.subheadline)
+                        .fontWeight(.semibold)
+                        .foregroundColor(.white)
+                    Text("All photos are now in the cloud.")
+                        .font(.caption)
+                        .foregroundColor(.white.opacity(0.75))
+                }
+                Spacer()
+                Button {
+                    withAnimation { showUploadSuccessBanner = false }
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.title3)
+                        .foregroundStyle(.white.opacity(0.5))
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 14)
+            .background(
+                RoundedRectangle(cornerRadius: 14)
+                    .fill(.ultraThinMaterial)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 14)
+                            .stroke(Color.white.opacity(0.12), lineWidth: 1)
+                    )
+            )
+            .padding(.horizontal, 20)
+            .padding(.top, 50)
+            .transition(.opacity)
+        }
+    }
+
+    private func removeCloudURLsFromDraft() {
+        for dayIdx in draft.days.indices {
+            for stopIdx in draft.days[dayIdx].placeStops.indices {
+                for photoIdx in draft.days[dayIdx].placeStops[stopIdx].photos.indices {
+                    draft.days[dayIdx].placeStops[stopIdx].photos[photoIdx].cloudURL = nil
+                }
+            }
+        }
+        AutosaveManager.shared.cancelPending()
+        createdRecapStore.saveBlogDetail(draft)
     }
 
     /// True if every included photo already has a cloud URL.

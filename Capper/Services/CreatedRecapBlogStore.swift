@@ -32,8 +32,10 @@ struct CreatedRecapBlog: Identifiable, Equatable, Hashable, Codable, Sendable {
     let tripStartDate: Date?
     /// End date of the trip
     let tripEndDate: Date?
+    /// First available note or caption
+    let caption: String?
 
-    init(id: UUID = UUID(), sourceTripId: UUID, title: String, createdAt: Date, coverImageName: String, coverAssetIdentifier: String? = nil, selectedPhotoCount: Int, countryName: String? = nil, tripDateRangeText: String? = nil, lastEditedAt: Date? = nil, tripStartDate: Date? = nil, tripEndDate: Date? = nil, totalPlaceVisitCount: Int = 0, tripDurationDays: Int = 1) {
+    init(id: UUID = UUID(), sourceTripId: UUID, title: String, createdAt: Date, coverImageName: String, coverAssetIdentifier: String? = nil, selectedPhotoCount: Int, countryName: String? = nil, tripDateRangeText: String? = nil, lastEditedAt: Date? = nil, tripStartDate: Date? = nil, tripEndDate: Date? = nil, totalPlaceVisitCount: Int = 0, tripDurationDays: Int = 1, caption: String? = nil) {
         self.id = id
         self.sourceTripId = sourceTripId
         self.title = title
@@ -48,6 +50,7 @@ struct CreatedRecapBlog: Identifiable, Equatable, Hashable, Codable, Sendable {
         self.tripEndDate = tripEndDate
         self.totalPlaceVisitCount = totalPlaceVisitCount
         self.tripDurationDays = tripDurationDays
+        self.caption = caption
     }
 }
 
@@ -121,7 +124,8 @@ final class CreatedRecapBlogStore: ObservableObject {
             tripStartDate: startDate,
             tripEndDate: endDate,
             totalPlaceVisitCount: placeCount,
-            tripDurationDays: duration
+            tripDurationDays: duration,
+            caption: nil
         )
         tripDraftsBySourceId[trip.id] = trip
         recents.insert(blog, at: 0)
@@ -200,11 +204,11 @@ final class CreatedRecapBlogStore: ObservableObject {
             selectedPhotoCount: trip.selectedPhotoCount,
             countryName: detail.countryName ?? old.countryName,
             tripDateRangeText: trip.tripDateRangeDisplayText,
-            lastEditedAt: Date(),
             tripStartDate: trip.earliestDate,
             tripEndDate: trip.latestDate,
             totalPlaceVisitCount: detail.days.reduce(0) { $0 + $1.placeStops.count },
-            tripDurationDays: detail.days.count
+            tripDurationDays: detail.days.count,
+            caption: self.primaryCaption(from: detail)
             )
             self.persistIndex()
             Task {
@@ -243,11 +247,11 @@ final class CreatedRecapBlogStore: ObservableObject {
             selectedPhotoCount: old.selectedPhotoCount,
             countryName: country,
             tripDateRangeText: old.tripDateRangeText,
-            lastEditedAt: asDraft ? old.lastEditedAt : Date(),
             tripStartDate: old.tripStartDate,
             tripEndDate: old.tripEndDate,
             totalPlaceVisitCount: detail.days.reduce(0) { $0 + $1.placeStops.count },
-            tripDurationDays: detail.days.count
+            tripDurationDays: detail.days.count,
+            caption: self.primaryCaption(from: detail)
         )
         persistIndex()
         Task {
@@ -485,6 +489,28 @@ final class CreatedRecapBlogStore: ObservableObject {
             )
         }
         .sorted { $0.mostRecentBlog.createdAt > $1.mostRecentBlog.createdAt }
+    }
+
+    private func primaryCaption(from detail: RecapBlogDetail) -> String? {
+        // Try first non-empty stop note
+        for day in detail.days {
+            for stop in day.placeStops {
+                if let note = stop.noteText, !note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    return note
+                }
+            }
+        }
+        // Try first non-empty photo caption
+        for day in detail.days {
+            for stop in day.placeStops {
+                for photo in stop.photos {
+                    if let caption = photo.caption, !caption.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        return caption
+                    }
+                }
+            }
+        }
+        return nil
     }
 }
 

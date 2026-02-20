@@ -104,8 +104,10 @@ struct LandingView: View {
                 .environmentObject(authService)
         }
         .fullScreenCover(isPresented: $showAuth) {
-            AuthView()
-                .environmentObject(authService)
+            AuthView(onAuthenticated: {
+                showProfile = true
+            })
+            .environmentObject(authService)
         }
     }
 
@@ -250,6 +252,7 @@ struct LandingView: View {
 
 private struct CreatedRecapCard: View {
     let recap: CreatedRecapBlog
+    @EnvironmentObject private var createdRecapStore: CreatedRecapBlogStore
 
     private static let lastEditedFormatter: DateFormatter = {
         let f = DateFormatter()
@@ -257,6 +260,8 @@ private struct CreatedRecapCard: View {
         f.doesRelativeDateFormatting = true
         return f
     }()
+
+    @State private var showRemoveCloudPopup = false
 
     var body: some View {
         HStack(spacing: 12) {
@@ -274,6 +279,16 @@ private struct CreatedRecapCard: View {
                         .background(Color.black.opacity(0.6))
                         .cornerRadius(4)
                         .padding(4)
+                } else if createdRecapStore.isBlogInCloud(blogId: recap.sourceTripId) {
+                    Image(systemName: "icloud.and.arrow.up")
+                        .font(.caption2)
+                        .foregroundColor(.green)
+                        .padding(4)
+                        .background(Circle().fill(Color.white))
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            showRemoveCloudPopup = true
+                        }
                 }
             }
 
@@ -298,6 +313,14 @@ private struct CreatedRecapCard: View {
         .padding(10)
         .background(Color.white.opacity(0.1))
         .cornerRadius(12)
+        .alert("Remove from Cloud?", isPresented: $showRemoveCloudPopup) {
+            Button("Yes", role: .destructive) {
+                createdRecapStore.removeFromCloud(blogId: recap.sourceTripId)
+            }
+            Button("No", role: .cancel) { }
+        } message: {
+            Text("Are you sure you want to remove this blog from the cloud?")
+        }
     }
 
     private var lastEditedText: String {
@@ -464,6 +487,9 @@ struct AllRecentsSheet: View {
     @ObservedObject var createdRecapStore: CreatedRecapBlogStore
     @Binding var selectedRecap: CreatedRecapBlog?
     @Environment(\.dismiss) private var dismiss
+    
+    @State private var showRemoveCloudPopup = false
+    @State private var blogToRemove: CreatedRecapBlog?
 
     var body: some View {
         NavigationStack {
@@ -488,6 +514,17 @@ struct AllRecentsSheet: View {
                                         .background(Color.black.opacity(0.6))
                                         .cornerRadius(4)
                                         .padding(3)
+                                } else if createdRecapStore.isBlogInCloud(blogId: recap.sourceTripId) {
+                                    Image(systemName: "icloud.and.arrow.up")
+                                        .font(.caption2)
+                                        .foregroundColor(.green)
+                                        .padding(4)
+                                        .background(Circle().fill(Color.white))
+                                        .contentShape(Rectangle())
+                                        .onTapGesture {
+                                            blogToRemove = recap
+                                            showRemoveCloudPopup = true
+                                        }
                                 }
                             }
                             VStack(alignment: .leading, spacing: 4) {
@@ -506,6 +543,16 @@ struct AllRecentsSheet: View {
             }
             .navigationTitle("Recent Recaps")
             .navigationBarTitleDisplayMode(.inline)
+            .alert("Remove from Cloud?", isPresented: $showRemoveCloudPopup, presenting: blogToRemove) { blog in
+                Button("Yes", role: .destructive) {
+                    createdRecapStore.removeFromCloud(blogId: blog.sourceTripId)
+                }
+                Button("No", role: .cancel) {
+                    blogToRemove = nil
+                }
+            } message: { blog in
+                Text("Are you sure you want to remove this blog from the cloud?")
+            }
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Done") {

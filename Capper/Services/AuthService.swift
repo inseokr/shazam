@@ -171,7 +171,14 @@ private struct LoginRequest: Encodable {
 private struct LoginResponse: Decodable {
     let message: String?
     let token: String?
-    // Let's assume there's a user payload inside if needed
+    let user: UserPayload?
+}
+
+private struct UserPayload: Decodable {
+    let _id: String?
+    let email: String?
+    let username: String?
+    let name: String?
 }
 
 private struct UsernameCheckResponse: Decodable {
@@ -239,7 +246,7 @@ extension AuthService {
         
         let payload = LoginRequest(username: email, password: password)
         let response: LoginResponse = try await APIManager.shared.post(
-            endpoint: "/jwt_login",
+            endpoint: "/jwt_login_v1",
             body: payload,
             requiresAuth: false
         )
@@ -251,10 +258,14 @@ extension AuthService {
         // Hydrate Global State
         setJwtToken(token)
         
+        let actualEmail = response.user?.email ?? (isUsername ? "\(email)@example.com" : email)
+        let actualDisplayName = response.user?.name ?? response.user?.username ?? (isUsername ? email : nil)
+        let actualId = response.user?._id ?? "email-\(UUID().uuidString)"
+        
         let user = AuthUser(
-            id: "email-\(UUID().uuidString)",
-            email: isUsername ? "\(email)@example.com" : email, // Or get from server response
-            displayName: isUsername ? email : nil,
+            id: actualId,
+            email: actualEmail,
+            displayName: actualDisplayName,
             provider: .email
         )
         finishSignIn(user: user)
