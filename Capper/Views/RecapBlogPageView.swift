@@ -42,6 +42,13 @@ struct RecapBlogPageView: View {
     @State private var isKeyboardVisible = false
     @State private var cancellables = Set<AnyCancellable>()
 
+    // Cloud Upload State
+    @State private var isUploading = false
+    @State private var uploadProgress: (current: Int, total: Int) = (0, 0)
+    @State private var showUploadSuccessBanner = false
+    @State private var showUploadErrorAlert = false
+    @State private var uploadErrorMessage = ""
+
     private enum UndoAction {
         case deletePlace(dayId: UUID, stop: PlaceStop, index: Int)
         case deletePhoto(dayId: UUID, stopId: UUID, photo: RecapPhoto, index: Int)
@@ -116,25 +123,23 @@ struct RecapBlogPageView: View {
                     } else {
                         HStack(spacing: 16) {
                             Button {
-                                showShareSheet = true
+                                uploadBlogPhotos()
                             } label: {
-                                Image("ShareIcon")
-                                    .renderingMode(.original)
-                                    .resizable()
-                                    .scaledToFit()
-                                    .frame(width: 22, height: 22)
+                                if isUploading {
+                                    ProgressView()
+                                        .tint(.white)
+                                        .frame(width: 22, height: 22)
+                                } else {
+                                    Image("Upload Cloud Icon")
+                                        .renderingMode(.template)
+                                        .resizable()
+                                        .scaledToFit()
+                                        .frame(width: 22, height: 22)
+                                        .foregroundColor(blogIsInCloud ? .green : .white)
+                                }
                             }
                             .buttonStyle(.plain)
-                            Button {
-                                // Upload Cloud action
-                            } label: {
-                                Image("Upload Cloud Icon")
-                                    .renderingMode(.template)
-                                    .resizable()
-                                    .scaledToFit()
-                                    .frame(width: 22, height: 22)
-                            }
-                            .buttonStyle(.plain)
+                            .disabled(isUploading)
                             Button {
                                 showBlogSettings = true
                             } label: {
@@ -146,7 +151,7 @@ struct RecapBlogPageView: View {
                 }
             }
             .sheet(isPresented: $showShareSheet) {
-                ShareSheet(items: [shareText])
+                ShareSheet(items: shareItems)
             }
             .sheet(isPresented: $showBlogSettings) {
                 BlogSettingsSheet(
@@ -159,6 +164,9 @@ struct RecapBlogPageView: View {
                     onDelete: {
                         createdRecapStore.deleteBlog(sourceTripId: blogId)
                         dismiss()
+                    },
+                    onRemoveFromCloud: {
+                        createdRecapStore.removeFromCloud(blogId: blogId)
                     }
                 )
             }
@@ -175,13 +183,17 @@ struct RecapBlogPageView: View {
             } message: {
                 Text("Tap Save when you're done editing to keep your changes and unlock your map routes.")
             }
-            .alert("Leave Without Saving?", isPresented: $showUnsavedChangesAlert) {
-                Button("Yes", role: .destructive) {
+            .alert("Save Before Leaving?", isPresented: $showUnsavedChangesAlert) {
+                Button("Save & Leave") {
+                    saveDraft()
                     dismiss()
                 }
-                Button("No", role: .cancel) { }
+                Button("Leave Without Saving", role: .destructive) {
+                    dismiss()
+                }
+                Button("Cancel", role: .cancel) { }
             } message: {
-                Text("You have unsaved changes. Are you sure you want to leave?")
+                Text("You have unsaved changes. Would you like to save before leaving?")
             }
             .sheet(isPresented: $showCoverPhotoPicker) {
                 BlogCoverPhotoPickerView(
@@ -193,19 +205,19 @@ struct RecapBlogPageView: View {
                     }
                 )
             }
-            .confirmationDialog("Save this blog?", isPresented: $showNewBlogExitConfirmation, titleVisibility: .visible) {
-                Button("Save as draft") {
+            .alert("Save Before Leaving?", isPresented: $showNewBlogExitConfirmation) {
+                Button("Save Draft") {
                     createdRecapStore.saveBlogDetail(draft, asDraft: true)
                     createdRecapStore.showDraftSavedToast = true
                     dismiss()
                 }
-                Button("Don't save", role: .destructive) {
+                Button("Don't Save", role: .destructive) {
                     createdRecapStore.deleteBlog(sourceTripId: blogId)
                     dismiss()
                 }
                 Button("Cancel", role: .cancel) { }
             } message: {
-                Text("Do you want to save this new blog draft?")
+                Text("Do you want to save this blog as a draft before leaving?")
             }
             .onAppear {
                 if createdRecapStore.isLoading {
@@ -321,6 +333,83 @@ struct RecapBlogPageView: View {
                 }
             }
             .animation(.spring(response: 0.4, dampingFraction: 0.8), value: showFirstSaveBanner)
+            .overlay(alignment: .top) {
+                if isUploading {
+                    HStack(spacing: 12) {
+                        ProgressView()
+                            .tint(.white)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Uploading to cloud…")
+                                .font(.subheadline)
+                                .fontWeight(.semibold)
+                                .foregroundColor(.white)
+                            Text("\(uploadProgress.current) of \(uploadProgress.total) photos")
+                                .font(.caption)
+                                .foregroundColor(.white.opacity(0.75))
+                        }
+                        Spacer()
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 14)
+                    .background(
+                        RoundedRectangle(cornerRadius: 14)
+                            .fill(.ultraThinMaterial)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 14)
+                                    .stroke(Color.white.opacity(0.12), lineWidth: 1)
+                            )
+                    )
+                    .padding(.horizontal, 20)
+                    .padding(.top, 50)
+                    .transition(.opacity)
+                }
+            }
+            .animation(.spring(response: 0.4, dampingFraction: 0.8), value: isUploading)
+            .overlay(alignment: .top) {
+                if showUploadSuccessBanner {
+                    HStack(spacing: 12) {
+                        Image(systemName: "checkmark.icloud.fill")
+                            .font(.title2)
+                            .foregroundColor(.green)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Uploaded to cloud")
+                                .font(.subheadline)
+                                .fontWeight(.semibold)
+                                .foregroundColor(.white)
+                            Text("All photos are now in the cloud.")
+                                .font(.caption)
+                                .foregroundColor(.white.opacity(0.75))
+                        }
+                        Spacer()
+                        Button {
+                            withAnimation { showUploadSuccessBanner = false }
+                        } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .font(.title3)
+                                .foregroundStyle(.white.opacity(0.5))
+                        }
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 14)
+                    .background(
+                        RoundedRectangle(cornerRadius: 14)
+                            .fill(.ultraThinMaterial)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 14)
+                                    .stroke(Color.white.opacity(0.12), lineWidth: 1)
+                            )
+                    )
+                    .padding(.horizontal, 20)
+                    .padding(.top, 50)
+                    .transition(.opacity)
+                }
+            }
+            .animation(.spring(response: 0.4, dampingFraction: 0.8), value: showUploadSuccessBanner)
+            .alert("Upload Failed", isPresented: $showUploadErrorAlert) {
+                Button("OK", role: .cancel) { }
+            } message: {
+                Text(uploadErrorMessage)
+            }
             .preferredColorScheme(.dark)
         }
     }
@@ -534,6 +623,38 @@ struct RecapBlogPageView: View {
                         Spacer()
                     }
                 }
+
+                if !isEditMode && blogIsInCloud {
+                    VStack {
+                        Spacer()
+                        HStack {
+                            Spacer()
+                            Button {
+                                showShareSheet = true
+                            } label: {
+                                HStack(spacing: 6) {
+                                    Image(systemName: "paperplane.fill")
+                                        .font(.system(size: 13, weight: .semibold))
+                                    Text("Share")
+                                        .font(.system(size: 13, weight: .semibold))
+                                }
+                                .foregroundColor(.white)
+                                .padding(.horizontal, 16)
+                                .padding(.vertical, 9)
+                                .background(.ultraThinMaterial)
+                                .clipShape(Capsule())
+                                .overlay(
+                                    Capsule()
+                                        .stroke(Color.white.opacity(0.35), lineWidth: 1)
+                                )
+                                .shadow(color: .black.opacity(0.3), radius: 6, y: 2)
+                            }
+                            .buttonStyle(.plain)
+                            Spacer()
+                        }
+                        .padding(.bottom, 20)
+                    }
+                }
             }
         }
         .frame(height: screenHeight * 0.55)
@@ -741,6 +862,15 @@ struct RecapBlogPageView: View {
         return "\(draft.title) – My Recap Blog"
     }
 
+    private var shareItems: [Any] {
+        // Put the URL first so iOS "Copy" action copies the link, not the text.
+        if blogIsInCloud,
+           let url = URL(string: "https://www.linkedspaces.com/bloggo/recap?id=\(blogId.uuidString)") {
+            return [url, shareText]
+        }
+        return [shareText]
+    }
+
     private func saveDraft() {
         // Check if this is the first save before saving
         let isFirstSave = createdRecapStore.recents.first(where: { $0.sourceTripId == blogId })?.lastEditedAt == nil
@@ -789,7 +919,17 @@ struct RecapBlogPageView: View {
         // Perform Deletion
         var updatedDay = day
         updatedDay.placeStops.remove(at: stopIndex)
-        draft.days[dayIndex] = updatedDay
+
+        if updatedDay.placeStops.isEmpty {
+            // No places left in this day — remove the whole day
+            draft.days.remove(at: dayIndex)
+            // Clamp selectedDayIndex if it's now out of bounds
+            if selectedDayIndex >= draft.days.count {
+                selectedDayIndex = max(0, draft.days.count - 1)
+            }
+        } else {
+            draft.days[dayIndex] = updatedDay
+        }
     }
 
     private func removePhoto(dayId: UUID, stopId: UUID, photoId: UUID) {
@@ -983,6 +1123,85 @@ struct RecapBlogPageView: View {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
             if self.draftSnapshot == nil {
                 self.draftSnapshot = self.draft
+            }
+        }
+    }
+
+    /// True if every included photo already has a cloud URL.
+    private var blogIsInCloud: Bool {
+        let included = draft.days.flatMap(\.placeStops).flatMap(\.photos).filter(\.isIncluded)
+        return !included.isEmpty && included.allSatisfy { $0.cloudURL != nil }
+    }
+
+    private func uploadBlogPhotos() {
+        guard !isUploading else { return }
+        guard AuthService.shared.currentJwtToken != nil else {
+            uploadErrorMessage = "Please sign in to upload photos."
+            showUploadErrorAlert = true
+            return
+        }
+
+        // Collect all included photos that still need uploading
+        var photosToUpload: [(dayIdx: Int, stopIdx: Int, photoIdx: Int, assetId: String)] = []
+        for (dIdx, day) in draft.days.enumerated() {
+            for (sIdx, stop) in day.placeStops.enumerated() {
+                for (pIdx, photo) in stop.photos.enumerated() {
+                    if photo.isIncluded && photo.cloudURL == nil,
+                       let assetId = photo.localIdentifier {
+                        photosToUpload.append((dIdx, sIdx, pIdx, assetId))
+                    }
+                }
+            }
+        }
+
+        if photosToUpload.isEmpty {
+            // Already fully uploaded
+            withAnimation { showUploadSuccessBanner = true }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 4) {
+                withAnimation { showUploadSuccessBanner = false }
+            }
+            return
+        }
+
+        isUploading = true
+        uploadProgress = (0, photosToUpload.count)
+
+        Task {
+            var failCount = 0
+            for item in photosToUpload {
+                do {
+                    let cloudURL = try await APIManager.shared.uploadPhoto(assetIdentifier: item.assetId)
+                    // Write the cloud URL back into the draft
+                    draft.days[item.dayIdx].placeStops[item.stopIdx].photos[item.photoIdx].cloudURL = cloudURL
+                } catch {
+                    failCount += 1
+                    print("🚨 Upload failed for asset \(item.assetId): \(error.localizedDescription)")
+                }
+                uploadProgress.current += 1
+            }
+
+            // Save updated draft with cloud URLs
+            AutosaveManager.shared.cancelPending()
+            createdRecapStore.saveBlogDetail(draft)
+
+            // Publish blog JSON to server (fire-and-forget)
+            if failCount == 0 {
+                let snapshot = draft
+                Task {
+                    try? await APIManager.shared.publishBlogDetail(snapshot)
+                }
+            }
+
+            isUploading = false
+
+            if failCount > 0 {
+                uploadErrorMessage = "\(failCount) photo\(failCount == 1 ? "" : "s") failed to upload. Tap the cloud button to retry."
+                showUploadErrorAlert = true
+            } else {
+                withAnimation { showUploadSuccessBanner = true }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 4) {
+                    withAnimation { showUploadSuccessBanner = false }
+                }
             }
         }
     }

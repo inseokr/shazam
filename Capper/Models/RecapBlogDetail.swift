@@ -112,8 +112,10 @@ struct RecapPhoto: Identifiable, Equatable, Codable, Sendable {
     var localIdentifier: String?
     /// Caption per photo; persisted with blog detail when user taps Save.
     var caption: String?
+    /// Cloud URL returned by the file server after upload. Nil means not yet uploaded.
+    var cloudURL: String?
 
-    init(id: UUID = UUID(), timestamp: Date, location: PhotoCoordinate? = nil, imageName: String, isIncluded: Bool = true, localIdentifier: String? = nil, caption: String? = nil) {
+    init(id: UUID = UUID(), timestamp: Date, location: PhotoCoordinate? = nil, imageName: String, isIncluded: Bool = true, localIdentifier: String? = nil, caption: String? = nil, cloudURL: String? = nil) {
         self.id = id
         self.timestamp = timestamp
         self.location = location
@@ -121,5 +123,6 @@ struct RecapPhoto: Identifiable, Equatable, Codable, Sendable {
         self.isIncluded = isIncluded
         self.localIdentifier = localIdentifier
         self.caption = caption
+        self.cloudURL = cloudURL
     }
 }

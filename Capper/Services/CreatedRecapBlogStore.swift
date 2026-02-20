@@ -419,6 +419,52 @@ final class CreatedRecapBlogStore: ObservableObject {
         return sorted.first?.key ?? ""
     }
 
+    /// Returns true if every included photo in the blog has been uploaded to the cloud.
+    func isBlogInCloud(blogId: UUID) -> Bool {
+        guard let detail = blogDetailsBySourceId[blogId] else { return false }
+        let included = detail.days.flatMap(\.placeStops).flatMap(\.photos).filter(\.isIncluded)
+        return !included.isEmpty && included.allSatisfy { $0.cloudURL != nil }
+    }
+
+    /// Clears all cloud URLs from a blog's photos (removes from cloud).
+    func removeFromCloud(blogId: UUID) {
+        guard var detail = blogDetailsBySourceId[blogId] else { return }
+        for dayIdx in detail.days.indices {
+            for stopIdx in detail.days[dayIdx].placeStops.indices {
+                for photoIdx in detail.days[dayIdx].placeStops[stopIdx].photos.indices {
+                    detail.days[dayIdx].placeStops[stopIdx].photos[photoIdx].cloudURL = nil
+                }
+            }
+        }
+        blogDetailsBySourceId[blogId] = detail
+        Task {
+            await BlogRepository.shared.saveDetail(detail)
+        }
+    }
+
+    /// Blogs that have been fully uploaded to the cloud.
+    var cloudPublishedBlogs: [CreatedRecapBlog] {
+        recents.filter { isBlogInCloud(blogId: $0.sourceTripId) }
+    }
+
+    /// Country summaries using only cloud-published blogs (for Profile page).
+    var cloudCountrySummaries: [CountryRecapSummary] {
+        let published = cloudPublishedBlogs
+        let grouped = Dictionary(grouping: published) { blog -> String in
+            let name = blog.countryName ?? "Unknown"
+            return name.isEmpty || name == "Unknown" ? "Unknown" : name
+        }
+        return grouped.compactMap { countryName, blogs in
+            guard let mostRecent = blogs.max(by: { $0.createdAt < $1.createdAt }) else { return nil }
+            return CountryRecapSummary(
+                countryName: countryName,
+                mostRecentBlog: mostRecent,
+                blogs: blogs.sorted { $0.createdAt > $1.createdAt }
+            )
+        }
+        .sorted { $0.mostRecentBlog.createdAt > $1.mostRecentBlog.createdAt }
+    }
+
     /// For Landing Recents section (newest first).
     var displayRecents: [CreatedRecapBlog] {
         Array(recents)

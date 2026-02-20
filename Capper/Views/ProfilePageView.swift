@@ -42,18 +42,25 @@ struct ProfilePageView: View {
     @StateObject private var viewModel = MyBlogsProfileViewModel()
     @State private var selectedCountryID: String? = nil
     @State private var showMyMap = false
+    /// Local navigation state — avoids conflicting with the global selectedCreatedRecap binding
+    @State private var selectedBlogToOpen: CreatedRecapBlog? = nil
     
+    /// Only cloud-published blogs appear on the profile.
+    private var publishedBlogs: [CreatedRecapBlog] {
+        createdRecapStore.cloudPublishedBlogs
+    }
+
     private var uniqueCountries: [String] {
-        let countries = createdRecapStore.recents.compactMap { $0.countryName }
+        let countries = publishedBlogs.compactMap { $0.countryName }
         let unique = Array(Set(countries))
         return unique.sorted()
     }
-    
+
     private var filteredBlogs: [CreatedRecapBlog] {
         guard let countryID = selectedCountryID else {
-            return createdRecapStore.recents
+            return publishedBlogs
         }
-        return createdRecapStore.recents.filter { $0.countryName == countryID }
+        return publishedBlogs.filter { $0.countryName == countryID }
     }
 
     var body: some View {
@@ -64,6 +71,7 @@ struct ProfilePageView: View {
                 // 1. Centered Hero Section
                 ProfileHeroSection()
                     .environmentObject(authService)
+                    .environmentObject(createdRecapStore)
                     .padding(.top, ProfileTheme.Spacing.xl)
                 
                 // 2. Stories Section
@@ -78,9 +86,9 @@ struct ProfilePageView: View {
                         .padding(.horizontal, ProfileTheme.Spacing.md)
                     
                     // Content
-                    if createdRecapStore.isLoading || viewModel.isScanning {
+                    if createdRecapStore.isLoading {
                         ProfileLoadingSkeleton()
-                    } else if createdRecapStore.recents.isEmpty {
+                    } else if publishedBlogs.isEmpty {
                         ProfileEmptyState()
                     } else {
                         VStack(alignment: .leading, spacing: ProfileTheme.Spacing.md) {
@@ -88,7 +96,7 @@ struct ProfilePageView: View {
                             
                             StoryFeedSection(
                                 blogs: filteredBlogs,
-                                selectedBlog: $selectedCreatedRecap
+                                selectedBlog: $selectedBlogToOpen
                             )
                         }
                     }
@@ -126,6 +134,14 @@ struct ProfilePageView: View {
                         .foregroundColor(.primary)
                 }
             }
+            ToolbarItem(placement: .topBarTrailing) {
+                Button {
+                    // TODO: Open notifications
+                } label: {
+                    Image(systemName: "bell")
+                        .foregroundColor(.primary)
+                }
+            }
         }
         .sheet(isPresented: $showShare) {
             if !shareItems.isEmpty {
@@ -137,6 +153,12 @@ struct ProfilePageView: View {
         }
         .navigationDestination(isPresented: $showMyMap) {
             MyMapView(selectedCreatedRecap: $selectedCreatedRecap)
+        }
+        .navigationDestination(item: $selectedBlogToOpen) { recap in
+            RecapBlogPageView(
+                blogId: recap.sourceTripId,
+                initialTrip: createdRecapStore.tripDraft(for: recap.sourceTripId)
+            )
         }
     }
 
@@ -199,6 +221,7 @@ struct ProfilePageView: View {
 // MARK: - Hero Section
 struct ProfileHeroSection: View {
     @EnvironmentObject private var authService: AuthService
+    @EnvironmentObject private var createdRecapStore: CreatedRecapBlogStore
     @State private var showPhotoViewer = false
     @State private var showManagement = false
     @State private var showEditBio = false
@@ -253,9 +276,7 @@ struct ProfileHeroSection: View {
             }
             
             // Subtle Stats Line
-            Text("12 Countries • 34 Blogs")
-                .font(ProfileTheme.Typography.metadata)
-                .foregroundColor(.secondary)
+            ProfileStatsLine()
                 .padding(.top, ProfileTheme.Spacing.xs)
             
             // Action Buttons
@@ -299,6 +320,7 @@ struct ProfileHeroSection: View {
         }
         .sheet(isPresented: $showManagement) {
             ProfileManagementView()
+                .environmentObject(createdRecapStore)
                 .presentationDragIndicator(.visible)
         }
         .sheet(isPresented: $showEditBio) {
@@ -318,9 +340,18 @@ struct EditBioView: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section(header: Text("About You"), footer: Text("Write a short bio to display on your profile. Keep it brief!")) {
-                    TextEditor(text: $draftBio)
-                        .frame(minHeight: 100)
+                Section(header: Text("About You")) {
+                    ZStack(alignment: .topLeading) {
+                        TextEditor(text: $draftBio)
+                            .frame(minHeight: 100)
+                        if draftBio.isEmpty {
+                            Text("Write a short bio to display on your profile. Keep it brief!")
+                                .foregroundColor(Color(uiColor: .placeholderText))
+                                .padding(.top, 8)
+                                .padding(.leading, 5)
+                                .allowsHitTesting(false)
+                        }
+                    }
                 }
             }
             .navigationTitle("Edit Bio")
@@ -423,13 +454,21 @@ struct ProfilePhotoViewer: View {
 // MARK: - Reusable BlogCard Component
 struct BlogCard: View {
     let blog: CreatedRecapBlog
-    
+
     var body: some View {
         VStack(alignment: .leading, spacing: ProfileTheme.Spacing.md) {
-            
+
             // 16:9 Cover Image
             GeometryReader { proxy in
-                if let uiImage = UIImage(named: blog.coverImageName) ?? UIImage(contentsOfFile: blog.coverImageName) {
+                if let assetId = blog.coverAssetIdentifier, !assetId.isEmpty {
+                    AssetPhotoView(
+                        assetIdentifier: assetId,
+                        cornerRadius: 0,
+                        targetSize: CGSize(width: proxy.size.width * 2, height: proxy.size.width * 2 * (9/16))
+                    )
+                    .frame(width: proxy.size.width, height: proxy.size.width * (9/16))
+                    .clipped()
+                } else if let uiImage = UIImage(named: blog.coverImageName) ?? UIImage(contentsOfFile: blog.coverImageName) {
                     Image(uiImage: uiImage)
                         .resizable()
                         .scaledToFill()
@@ -494,15 +533,40 @@ struct StoryFeedSection: View {
     }
 }
 
+// MARK: - Stats Line
+struct ProfileStatsLine: View {
+    @EnvironmentObject private var createdRecapStore: CreatedRecapBlogStore
+
+    var body: some View {
+        let published = createdRecapStore.cloudPublishedBlogs
+        let countryCount = Set(published.compactMap { $0.countryName }).count
+        let blogCount = published.count
+
+        if blogCount > 0 {
+            Text("\(countryCount) \(countryCount == 1 ? "Country" : "Countries") \u{2022} \(blogCount) \(blogCount == 1 ? "Blog" : "Blogs")")
+                .font(ProfileTheme.Typography.metadata)
+                .foregroundColor(.secondary)
+        } else {
+            Text("No published blogs yet")
+                .font(ProfileTheme.Typography.metadata)
+                .foregroundColor(.secondary)
+        }
+    }
+}
+
 // MARK: - Empty State View
 struct ProfileEmptyState: View {
     var body: some View {
         VStack(spacing: ProfileTheme.Spacing.md) {
-            Text("No blogs yet.")
+            Image(systemName: "icloud.and.arrow.up")
+                .font(.system(size: 36))
+                .foregroundColor(.secondary)
+
+            Text("No published blogs yet")
                 .font(ProfileTheme.Typography.storyTitle)
                 .foregroundColor(.primary)
-            
-            Text("When you publish a blog, it will appear here for your readers.")
+
+            Text("Upload a blog to the cloud and it will appear here on your profile.")
                 .font(ProfileTheme.Typography.bio)
                 .foregroundColor(.secondary)
                 .multilineTextAlignment(.center)

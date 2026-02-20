@@ -170,7 +170,7 @@ struct PlaceStopRowView: View {
                                             onRemovePhoto?(photo.id)
                                         } label: {
                                             Image(systemName: "xmark.circle.fill")
-                                                .font(.system(size: 22))
+                                                .font(.system(size: 30))
                                                 .symbolRenderingMode(.palette)
                                                 .foregroundStyle(.white, Color.black.opacity(0.6))
                                         }

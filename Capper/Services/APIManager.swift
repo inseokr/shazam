@@ -7,6 +7,7 @@
 //
 
 import Foundation
+import UIKit
 
 enum APIError: LocalizedError {
     case invalidURL
@@ -122,4 +123,118 @@ final class APIManager {
     func get<T: Decodable>(endpoint: String, requiresAuth: Bool = true) async throws -> T {
         return try await request(endpoint: endpoint, method: "GET", body: nil, requiresAuth: requiresAuth)
     }
+
+    // MARK: - File Server Upload
+
+    /// Uploads a UIImage to the file server as a compressed JPEG.
+    /// - Parameters:
+    ///   - image: The UIImage to upload.
+    ///   - filename: Filename for the upload (default: "photo.jpg").
+    /// - Returns: The cloud URL string from the server response.
+    func uploadPhoto(image: UIImage, filename: String = "photo.jpg") async throws -> String {
+        guard let url = URL(string: fileServerURL + "/place/file_upload") else {
+            throw APIError.invalidURL
+        }
+
+        // Compress to JPEG at 0.2 quality (matches LinkedSpaces compress: 0.2)
+        guard let imageData = image.jpegData(compressionQuality: 0.2) else {
+            throw APIError.serializationFailed
+        }
+
+        // Build multipart/form-data body — field name MUST be "photo"
+        let boundary = UUID().uuidString
+        var body = Data()
+        body.append(Data("--\(boundary)\r\n".utf8))
+        body.append(Data("Content-Disposition: form-data; name=\"photo\"; filename=\"\(filename)\"\r\n".utf8))
+        body.append(Data("Content-Type: image/jpeg\r\n\r\n".utf8))
+        body.append(imageData)
+        body.append(Data("\r\n--\(boundary)--\r\n".utf8))
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        // Let the boundary be set explicitly — do NOT set a bare "multipart/form-data"
+        request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+
+        // Inject JWT token
+        if let token = AuthService.shared.currentJwtToken {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+
+        request.httpBody = body
+
+        let (data, response): (Data, URLResponse)
+        do {
+            (data, response) = try await URLSession.shared.data(for: request)
+        } catch {
+            throw APIError.networkError(error)
+        }
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw APIError.invalidResponse
+        }
+
+        guard (200...299).contains(httpResponse.statusCode) else {
+            var errorMessage = "Upload failed."
+            if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                print("🚨 Upload Error JSON: \(json)")
+                errorMessage = (json["message"] as? String)
+                    ?? (json["error"] as? String)
+                    ?? errorMessage
+            }
+            print("🚨 Upload HTTP Error \(httpResponse.statusCode): \(errorMessage)")
+            throw APIError.httpError(statusCode: httpResponse.statusCode, message: errorMessage)
+        }
+
+        // Server returns { "path": "https://...cloud-url..." }
+        struct FileUploadResponse: Decodable {
+            let path: String?
+        }
+
+        let result: FileUploadResponse
+        do {
+            result = try JSONDecoder().decode(FileUploadResponse.self, from: data)
+        } catch {
+            throw APIError.decodingFailed(error)
+        }
+
+        guard let cloudURL = result.path, !cloudURL.isEmpty else {
+            throw APIError.invalidResponse
+        }
+
+        return cloudURL
+    }
+
+    /// Convenience: uploads a photo from the iOS Photos library by asset identifier.
+    /// Loads the image at up to 1920×1920, compresses, and uploads.
+    func uploadPhoto(assetIdentifier: String) async throws -> String {
+        let image = await ImageLoader.shared.loadImage(
+            assetIdentifier: assetIdentifier,
+            targetSize: CGSize(width: 1920, height: 1920)
+        )
+        guard let image else {
+            throw APIError.serializationFailed
+        }
+        let filename = "IMG_\(assetIdentifier.prefix(8)).jpg"
+        return try await uploadPhoto(image: image, filename: filename)
+    }
+
+    // MARK: - Blog Publishing
+
+    /// Publishes a RecapBlogDetail JSON to the API server so it can be viewed on the web.
+    /// Called after photos are uploaded to the cloud (fire-and-forget from the UI).
+    func publishBlogDetail(_ detail: RecapBlogDetail) async throws {
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        let body = try encoder.encode(detail)
+        let _: PublishResponse = try await request(
+            endpoint: "/bloggo/recap/publish",
+            method: "POST",
+            body: body,
+            requiresAuth: true
+        )
+    }
+}
+
+private struct PublishResponse: Decodable {
+    let result: String?
 }

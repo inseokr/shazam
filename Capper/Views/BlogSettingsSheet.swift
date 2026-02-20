@@ -11,11 +11,17 @@ struct BlogSettingsSheet: View {
     var onSave: () -> Void
     var onEditMode: (() -> Void)? = nil
     var onDelete: () -> Void
+    var onRemoveFromCloud: (() -> Void)? = nil
     @Environment(\.dismiss) private var dismiss
 
     @State private var showTitleChange = false
     @State private var showCoverChange = false
     @State private var showDeleteConfirmation = false
+    @State private var showRemoveFromCloudConfirmation = false
+
+    private var hasCloudPhotos: Bool {
+        draft.days.flatMap(\.placeStops).flatMap(\.photos).contains { $0.cloudURL != nil }
+    }
 
     var body: some View {
         NavigationStack {
@@ -33,6 +39,18 @@ struct BlogSettingsSheet: View {
                     }
                 }
 
+                if hasCloudPhotos {
+                    Section {
+                        Button(role: .destructive) {
+                            showRemoveFromCloudConfirmation = true
+                        } label: {
+                            Label("Remove from Cloud", systemImage: "icloud.slash")
+                        }
+                    } footer: {
+                        Text("This will remove uploaded photos from the cloud. Your local blog and photos are not affected.")
+                    }
+                }
+
                 Section {
                     if onEditMode != nil {
                         Button {
@@ -42,7 +60,7 @@ struct BlogSettingsSheet: View {
                             Label("Edit Mode", systemImage: "pencil")
                         }
                     }
-                    
+
                     Button(role: .destructive) {
                         showDeleteConfirmation = true
                     } label: {
@@ -78,6 +96,24 @@ struct BlogSettingsSheet: View {
                 Button("Cancel", role: .cancel) {}
             } message: {
                 Text("Are you sure you want to delete this blog? It will be removed from your profile, but the trip will be available in Trips to customize again.")
+            }
+            .alert("Remove from Cloud?", isPresented: $showRemoveFromCloudConfirmation) {
+                Button("Remove", role: .destructive) {
+                    // Clear cloud URLs from the draft in-place
+                    for dayIdx in draft.days.indices {
+                        for stopIdx in draft.days[dayIdx].placeStops.indices {
+                            for photoIdx in draft.days[dayIdx].placeStops[stopIdx].photos.indices {
+                                draft.days[dayIdx].placeStops[stopIdx].photos[photoIdx].cloudURL = nil
+                            }
+                        }
+                    }
+                    onRemoveFromCloud?()
+                    onSave()
+                    dismiss()
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("This will remove all uploaded photos from the cloud. Your local blog is not affected.")
             }
             .preferredColorScheme(.dark)
         }
