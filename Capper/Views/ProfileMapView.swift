@@ -25,6 +25,13 @@ struct ProfileMapView: View {
         ZStack(alignment: .top) {
             profileMap
             countryFilterBar
+            
+            // Bottom Trip List
+            VStack {
+                Spacer()
+                bottomTripList
+            }
+            .ignoresSafeArea(.keyboard)
         }
         .ignoresSafeArea(edges: .bottom)
         .navigationTitle("My Map")
@@ -35,12 +42,14 @@ struct ProfileMapView: View {
             mapPosition = .region(viewModel.mapRegion)
         }
         .onChange(of: viewModel.mapRegionChangeCounter) { _, _ in
-            mapPosition = .region(viewModel.mapRegion)
+            withAnimation {
+                mapPosition = .region(viewModel.mapRegion)
+            }
         }
         .navigationDestination(item: $selectedBlogForNavigation) { blog in
             RecapBlogPageView(
                 blogId: blog.sourceTripId,
-                initialTrip: createdRecapStore.tripDraft(for: blog.sourceTripId)
+                initialTrip: _createdRecapStore.wrappedValue.tripDraft(for: blog.sourceTripId)
             )
         }
     }
@@ -48,21 +57,28 @@ struct ProfileMapView: View {
     private var profileMap: some View {
         Map(position: $mapPosition) {
             ForEach(viewModel.tripsWithCoordinates, id: \.blog.sourceTripId) { item in
-                Annotation("", coordinate: item.coordinate) {
-                    TripAnnotationView(
-                        blog: item.blog,
-                        isSelected: viewModel.selectedTripID == item.blog.sourceTripId
-                    )
-                    .onTapGesture {
-                        viewModel.selectTrip(item.blog.sourceTripId)
-                        selectedBlogForNavigation = item.blog
-                    }
-                }
+                annotation(for: item)
             }
         }
         .mapStyle(.standard(elevation: .realistic))
         .onMapCameraChange(frequency: .onEnd) { context in
             viewModel.mapRegion = context.region
+        }
+    }
+
+    @MapContentBuilder
+    private func annotation(for item: (blog: CreatedRecapBlog, coordinate: CLLocationCoordinate2D)) -> some MapContent {
+        Annotation("", coordinate: item.coordinate) {
+            TripAnnotationView(
+                blog: item.blog,
+                isSelected: viewModel.selectedTripID == item.blog.sourceTripId
+            )
+            .onTapGesture {
+                withAnimation {
+                    viewModel.selectTrip(item.blog.sourceTripId)
+                    viewModel.recenterToTrip(item.blog)
+                }
+            }
         }
     }
 
@@ -94,6 +110,44 @@ struct ProfileMapView: View {
             )
         )
     }
+    
+    // MARK: - Bottom Trip List
+    
+    private var bottomTripList: some View {
+        ScrollViewReader { proxy in
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 12) {
+                    ForEach(viewModel.visibleTrips, id: \.sourceTripId) { trip in
+                        ProfileMapCardView(
+                            blog: trip,
+                            isSelected: viewModel.selectedTripID == trip.sourceTripId,
+                            onTap: {
+                                withAnimation {
+                                    viewModel.selectTrip(trip.sourceTripId)
+                                    viewModel.recenterToTrip(trip)
+                                }
+                            },
+                            onNavigate: {
+                                selectedBlogForNavigation = trip
+                            }
+                        )
+                        .id(trip.sourceTripId)
+                        .frame(width: 300)
+                    }
+                }
+                .padding(.horizontal, 16)
+                .padding(.bottom, 20) // Safe area breathing room
+            }
+            .onChange(of: viewModel.selectedTripID) { _, newID in
+                if let id = newID {
+                    withAnimation {
+                        proxy.scrollTo(id, anchor: .center)
+                    }
+                }
+            }
+        }
+        .frame(height: 140)
+    }
 
     private func countryPill(label: String, isSelected: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
@@ -107,6 +161,85 @@ struct ProfileMapView: View {
                 .clipShape(Capsule())
         }
         .buttonStyle(.plain)
+    }
+}
+
+// MARK: - ProfileMapCardView (Bottom List Item)
+private struct ProfileMapCardView: View {
+    let blog: CreatedRecapBlog
+    let isSelected: Bool
+    let onTap: () -> Void
+    let onNavigate: () -> Void
+
+    var body: some View {
+        Button(action: onTap) {
+            HStack(spacing: 12) {
+                coverImage
+                tripInfo
+                chevronButton
+            }
+            .padding(12)
+            .background(.ultraThinMaterial)
+            .background(Color.black.opacity(0.3))
+            .cornerRadius(16)
+            .overlay(
+                RoundedRectangle(cornerRadius: 16)
+                    .stroke(isSelected ? Color.blue : Color.white.opacity(0.1), lineWidth: isSelected ? 2 : 1)
+            )
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var coverImage: some View {
+        TripCoverImage(
+            theme: blog.coverImageName,
+            coverAssetIdentifier: blog.coverAssetIdentifier,
+            targetSize: CGSize(width: 160, height: 160)
+        )
+        .frame(width: 80, height: 80)
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(Color.white.opacity(0.2), lineWidth: 1)
+        )
+    }
+
+    private var tripInfo: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(blog.title)
+                .font(.headline)
+                .fontWeight(.bold)
+                .foregroundColor(.white)
+                .lineLimit(2)
+                .multilineTextAlignment(.leading)
+            
+            HStack(spacing: 4) {
+                if let country = blog.countryName {
+                    Text(country)
+                        .font(.caption)
+                        .fontWeight(.medium)
+                        .foregroundColor(.white.opacity(0.8))
+                    Text("•")
+                        .font(.caption)
+                        .foregroundColor(.white.opacity(0.4))
+                }
+                Text(blog.tripDateRangeText ?? "")
+                    .font(.caption)
+                    .foregroundColor(.white.opacity(0.6))
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var chevronButton: some View {
+        Button(action: onNavigate) {
+            Image(systemName: "chevron.right")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundColor(.white.opacity(0.6))
+                .frame(width: 32, height: 32)
+                .background(Color.white.opacity(0.1))
+                .clipShape(Circle())
+        }
     }
 }
 
@@ -124,7 +257,8 @@ struct TripAnnotationView: View {
         VStack(spacing: 4) {
             TripCoverImage(
                 theme: blog.coverImageName,
-                coverAssetIdentifier: blog.coverAssetIdentifier
+                coverAssetIdentifier: blog.coverAssetIdentifier,
+                targetSize: CGSize(width: 104, height: 144)
             )
             .frame(width: Self.width, height: Self.height)
             .clipShape(RoundedRectangle(cornerRadius: 8))
@@ -132,7 +266,7 @@ struct TripAnnotationView: View {
                 RoundedRectangle(cornerRadius: 8)
                     .stroke(isSelected ? Color.white : Color.white.opacity(0.6), lineWidth: isSelected ? 3 : 1.5)
             )
-            .shadow(color: .black.opacity(0.4), radius: 3, x: 0, y: 2)
+            .shadow(color: Color.black.opacity(0.4), radius: 3, x: 0, y: 2)
 
             Text(blog.title)
                 .font(.caption2)
@@ -167,16 +301,7 @@ struct CountryMapView: View {
     var body: some View {
         Map(position: $mapPosition) {
             ForEach(viewModel.tripsWithCoordinates, id: \.blog.sourceTripId) { item in
-                Annotation("", coordinate: item.coordinate) {
-                    TripAnnotationView(
-                        blog: item.blog,
-                        isSelected: viewModel.selectedTripID == item.blog.sourceTripId
-                    )
-                    .onTapGesture {
-                        viewModel.selectTrip(item.blog.sourceTripId)
-                        selectedBlogForNavigation = item.blog
-                    }
-                }
+                annotation(for: item)
             }
         }
         .mapStyle(.standard(elevation: .realistic))
@@ -192,14 +317,29 @@ struct CountryMapView: View {
             mapPosition = .region(viewModel.mapRegion)
         }
         .onChange(of: viewModel.mapRegionChangeCounter) { _, _ in
-            mapPosition = .region(viewModel.mapRegion)
+            withAnimation {
+                mapPosition = .region(viewModel.mapRegion)
+            }
         }
-
         .navigationDestination(item: $selectedBlogForNavigation) { blog in
             RecapBlogPageView(
                 blogId: blog.sourceTripId,
-                initialTrip: createdRecapStore.tripDraft(for: blog.sourceTripId)
+                initialTrip: _createdRecapStore.wrappedValue.tripDraft(for: blog.sourceTripId)
             )
+        }
+    }
+
+    @MapContentBuilder
+    private func annotation(for item: (blog: CreatedRecapBlog, coordinate: CLLocationCoordinate2D)) -> some MapContent {
+        Annotation("", coordinate: item.coordinate) {
+            TripAnnotationView(
+                blog: item.blog,
+                isSelected: viewModel.selectedTripID == item.blog.sourceTripId
+            )
+            .onTapGesture {
+                viewModel.selectTrip(item.blog.sourceTripId)
+                selectedBlogForNavigation = item.blog
+            }
         }
     }
 }

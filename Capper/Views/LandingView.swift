@@ -12,8 +12,10 @@ struct LandingView: View {
     @Binding var selectedCreatedRecap: CreatedRecapBlog?
     @ObservedObject var tripsViewModel: TripsViewModel
     @EnvironmentObject private var createdRecapStore: CreatedRecapBlogStore
+    @EnvironmentObject private var authService: AuthService
 
     @State private var showSettings = false
+    @State private var showAuth = false
     /// CTA text cycles every 5 seconds: "Tap to Scan" ↔ "Create A Blog Today"
     @State private var ctaIsAlternate = false
     @State private var ctaOpacity: Double = 1
@@ -42,11 +44,30 @@ struct LandingView: View {
                         .foregroundColor(.white)
                     Spacer()
                     Button {
-                        showProfile = true
+                        if authService.isSignedIn {
+                            showProfile = true
+                        } else {
+                            showAuth = true
+                        }
                     } label: {
-                        Image(systemName: "person.crop.circle")
-                            .font(.title2)
-                            .foregroundColor(.white)
+                        if let user = authService.currentUser {
+                            // Signed-in avatar
+                            ZStack {
+                                Circle()
+                                    .fill(LinearGradient(
+                                        colors: [Color(red: 0.2, green: 0.5, blue: 1), Color(red: 0.1, green: 0.3, blue: 0.8)],
+                                        startPoint: .topLeading, endPoint: .bottomTrailing
+                                    ))
+                                    .frame(width: 32, height: 32)
+                                Text(user.initials)
+                                    .font(.system(size: 13, weight: .bold))
+                                    .foregroundColor(.white)
+                            }
+                        } else {
+                            Image(systemName: "person.crop.circle")
+                                .font(.title2)
+                                .foregroundColor(.white)
+                        }
                     }
                 }
                 .padding(.horizontal, 20)
@@ -68,6 +89,11 @@ struct LandingView: View {
         }
         .sheet(isPresented: $showSettings) {
             SettingsView()
+                .environmentObject(authService)
+        }
+        .fullScreenCover(isPresented: $showAuth) {
+            AuthView()
+                .environmentObject(authService)
         }
     }
 
@@ -267,7 +293,9 @@ private struct CreatedRecapCard: View {
 /// Settings sheet from the home page (gear icon). Includes neighborhood selection.
 private struct SettingsView: View {
     @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var authService: AuthService
     @State private var showNeighborhoodSheet = false
+    @State private var showAuth = false
     #if DEBUG
     @AppStorage("capper.tripClustering.debugLogging") private var tripClusteringDebug = false
     #endif
@@ -275,6 +303,63 @@ private struct SettingsView: View {
     var body: some View {
         NavigationStack {
             List {
+                // Account
+                Section {
+                    if let user = authService.currentUser {
+                        // Signed-in row
+                        HStack(spacing: 14) {
+                            ZStack {
+                                Circle()
+                                    .fill(LinearGradient(
+                                        colors: [Color(red: 0.2, green: 0.5, blue: 1), Color(red: 0.1, green: 0.3, blue: 0.8)],
+                                        startPoint: .topLeading, endPoint: .bottomTrailing
+                                    ))
+                                    .frame(width: 40, height: 40)
+                                Text(user.initials)
+                                    .font(.system(size: 15, weight: .bold))
+                                    .foregroundColor(.white)
+                            }
+                            VStack(alignment: .leading, spacing: 2) {
+                                if let name = user.displayName, !name.isEmpty {
+                                    Text(name)
+                                        .font(.subheadline)
+                                        .fontWeight(.semibold)
+                                }
+                                Text(user.email ?? user.provider.rawValue.capitalized)
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                        .padding(.vertical, 4)
+
+                        Button(role: .destructive) {
+                            authService.signOut()
+                        } label: {
+                            Label("Sign Out", systemImage: "rectangle.portrait.and.arrow.right")
+                        }
+                    } else {
+                        Button {
+                            showAuth = true
+                        } label: {
+                            HStack {
+                                Label("Sign In / Create Account", systemImage: "person.badge.plus")
+                                Spacer()
+                                Image(systemName: "chevron.right")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                    }
+                } header: {
+                    Text("Account")
+                } footer: {
+                    if authService.isSignedIn {
+                        Text("Your recaps sync to the cloud and can be edited on web.")
+                    } else {
+                        Text("Sign in to back up your recaps, access them on web, and restore Pro.")
+                    }
+                }
+
                 Section {
                     Button {
                         showNeighborhoodSheet = true
@@ -339,6 +424,10 @@ private struct SettingsView: View {
                 NeighborhoodIntroView(onDismiss: {
                     showNeighborhoodSheet = false
                 })
+            }
+            .fullScreenCover(isPresented: $showAuth) {
+                AuthView()
+                    .environmentObject(authService)
             }
         }
     }
@@ -410,5 +499,6 @@ struct AllRecentsSheet: View {
             tripsViewModel: TripsViewModel(createdRecapStore: CreatedRecapBlogStore.shared)
         )
         .environmentObject(CreatedRecapBlogStore.shared)
+        .environmentObject(AuthService.shared)
     }
 }

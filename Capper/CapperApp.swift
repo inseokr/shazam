@@ -11,6 +11,7 @@ import UIKit
 @main
 struct CapperApp: App {
     @StateObject private var photoAuth = PhotosAuthorizationManager()
+    @StateObject private var authService = AuthService.shared
     @AppStorage("blogify.hasCompletedOnboarding") private var hasCompletedOnboarding = false
     @Environment(\.scenePhase) private var scenePhase
 
@@ -32,6 +33,7 @@ struct CapperApp: App {
                     )
                 }
             }
+            .environmentObject(authService)
             .onAppear {
                 // Ensure auth status is fresh
                 photoAuth.refreshStatus()

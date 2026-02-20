@@ -323,53 +323,82 @@ struct FullScreenMapView: View {
 }
 
 /// Single place card for full-screen map bottom strip: number + title, description, photo on right; blue border when selected.
-private struct PlaceMapCardView: View {
-    let stop: PlaceStop
-    let stopNumber: Int
-    let isSelected: Bool
+    /// Single place card for full-screen map bottom strip: Premium layout with image left, badge, and text right.
+    private struct PlaceMapCardView: View {
+        let stop: PlaceStop
+        let stopNumber: Int
+        let isSelected: Bool
 
-    var body: some View {
-        HStack(alignment: .top, spacing: 12) {
-            VStack(alignment: .leading, spacing: 6) {
-                Text("\(stopNumber) \(stop.placeTitle)")
-                    .font(.headline)
-                    .fontWeight(.semibold)
-                    .foregroundColor(.white)
-                    .lineLimit(1)
-                Text(descriptionText)
-                    .font(.subheadline)
-                    .foregroundColor(.white.opacity(0.85))
-                    .lineLimit(2)
-                    .multilineTextAlignment(.leading)
+        var body: some View {
+            HStack(spacing: 12) {
+                // Left: Photo + Badge
+                ZStack(alignment: .topLeading) {
+                    if let photo = stop.photos.first {
+                        RecapPhotoThumbnail(photo: photo, cornerRadius: 10, showIcon: false, targetSize: CGSize(width: 200, height: 200))
+                            .frame(width: 88, height: 88)
+                            .clipped()
+                            .cornerRadius(10)
+                    } else {
+                        Rectangle()
+                            .fill(Color.gray.opacity(0.3))
+                            .frame(width: 88, height: 88)
+                            .cornerRadius(10)
+                            .overlay(Image(systemName: "photo").foregroundStyle(.white))
+                    }
+
+                    // Order Badge
+                    Text("\(stopNumber)")
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundColor(.white)
+                        .frame(width: 24, height: 24)
+                        .background(Circle().fill(Color.blue))
+                        .overlay(Circle().stroke(Color.white, lineWidth: 1.5))
+                        .offset(x: -6, y: -6)
+                        .shadow(radius: 2)
+                }
+                .padding(.leading, 6) // Make room for badge overhang
+
+                // Right: Text Content
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(stop.placeTitle)
+                        .font(.headline)
+                        .fontWeight(.bold)
+                        .foregroundColor(.white)
+                        .lineLimit(2)
+                        .multilineTextAlignment(.leading)
+
+                    if let desc = descriptionText, !desc.isEmpty {
+                        Text(desc)
+                            .font(.caption) // .subheadline might be too big for 2 lines
+                            .foregroundColor(.white.opacity(0.8))
+                            .lineLimit(2)
+                            .multilineTextAlignment(.leading)
+                            .lineSpacing(2)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(12)
+            .background(.thinMaterial) // Glass effect
+            .background(Color.black.opacity(0.4)) // Base tint
+            .cornerRadius(16)
+            .overlay(
+                RoundedRectangle(cornerRadius: 16)
+                    .stroke(isSelected ? Color.blue : Color.white.opacity(0.1), lineWidth: isSelected ? 2 : 1)
+            )
+            .padding(.horizontal, 4) // Breathing room in list
+        }
 
-            if let photo = stop.photos.first {
-                RecapPhotoThumbnail(photo: photo, cornerRadius: 8, showIcon: false, targetSize: CGSize(width: 160, height: 160))
-                    .frame(width: 72, height: 72)
-                    .clipped()
-                    .cornerRadius(8)
+        private var descriptionText: String? {
+            if let note = stop.noteText, !note.isEmpty {
+                return note
             }
+            if let subtitle = stop.placeSubtitle, !subtitle.isEmpty {
+                return subtitle
+            }
+            return nil // Don't show anything if just "3 photos" unless desired
         }
-        .padding(14)
-        .background(Color(white: 0.18))
-        .clipShape(RoundedRectangle(cornerRadius: 12))
-        .overlay(
-            RoundedRectangle(cornerRadius: 12)
-                .stroke(isSelected ? Color.blue : Color.clear, lineWidth: 3)
-        )
     }
-
-    private var descriptionText: String {
-        if let note = stop.noteText, !note.isEmpty {
-            return note
-        }
-        if let subtitle = stop.placeSubtitle, !subtitle.isEmpty {
-            return subtitle
-        }
-        return "\(stop.photos.count) photo\(stop.photos.count == 1 ? "" : "s")"
-    }
-}
 
 #Preview {
     MapDayView(photos: [

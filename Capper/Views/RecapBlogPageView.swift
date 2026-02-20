@@ -33,6 +33,7 @@ struct RecapBlogPageView: View {
     @AppStorage("blogify.showFirstTimeSaveTip") private var showFirstTimeSaveTip = true
     @State private var showSaveTipAlert = false
     @State private var showFirstSaveBanner = false
+    @State private var showNewBlogExitConfirmation = false
 
     // Undo State
     @State private var lastUndoAction: UndoAction?
@@ -79,12 +80,7 @@ struct RecapBlogPageView: View {
                         if isEditMode {
                             let isFirstCreation = createdRecapStore.recents.first(where: { $0.sourceTripId == blogId })?.lastEditedAt == nil
                             if isFirstCreation {
-                                // Only save and show toast if there are actual changes
-                                if draftSnapshot != nil && draft != draftSnapshot {
-                                    createdRecapStore.saveBlogDetail(draft, asDraft: true)
-                                    createdRecapStore.showDraftSavedToast = true
-                                }
-                                dismiss()
+                                showNewBlogExitConfirmation = true
                             } else if draftSnapshot != nil && draft != draftSnapshot {
                                 showUnsavedChangesAlert = true
                             } else {
@@ -122,7 +118,21 @@ struct RecapBlogPageView: View {
                             Button {
                                 showShareSheet = true
                             } label: {
-                                Image(systemName: "square.and.arrow.up")
+                                Image("ShareIcon")
+                                    .renderingMode(.original)
+                                    .resizable()
+                                    .scaledToFit()
+                                    .frame(width: 22, height: 22)
+                            }
+                            .buttonStyle(.plain)
+                            Button {
+                                // Upload Cloud action
+                            } label: {
+                                Image("Upload Cloud Icon")
+                                    .renderingMode(.template)
+                                    .resizable()
+                                    .scaledToFit()
+                                    .frame(width: 22, height: 22)
                             }
                             .buttonStyle(.plain)
                             Button {
@@ -182,6 +192,20 @@ struct RecapBlogPageView: View {
                         showCoverPhotoPicker = false
                     }
                 )
+            }
+            .confirmationDialog("Save this blog?", isPresented: $showNewBlogExitConfirmation, titleVisibility: .visible) {
+                Button("Save as draft") {
+                    createdRecapStore.saveBlogDetail(draft, asDraft: true)
+                    createdRecapStore.showDraftSavedToast = true
+                    dismiss()
+                }
+                Button("Don't save", role: .destructive) {
+                    createdRecapStore.deleteBlog(sourceTripId: blogId)
+                    dismiss()
+                }
+                Button("Cancel", role: .cancel) { }
+            } message: {
+                Text("Do you want to save this new blog draft?")
             }
             .onAppear {
                 if createdRecapStore.isLoading {
@@ -318,6 +342,7 @@ struct RecapBlogPageView: View {
                         }
                         if !isEditMode {
                             mapOrPreviewCard
+                                .id("map-anchor")
                         }
                         timelineContent
                         
@@ -335,6 +360,11 @@ struct RecapBlogPageView: View {
                         proxy.scrollTo(id, anchor: .top)
                     }
                     scrollToStopId = nil
+                }
+                .onChange(of: selectedDayIndex) { _, _ in
+                    withAnimation(.easeOut(duration: 0.3)) {
+                        proxy.scrollTo("map-anchor", anchor: .top)
+                    }
                 }
                 
                 if !isKeyboardVisible {

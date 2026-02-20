@@ -27,6 +27,8 @@ struct TripsView: View {
         _selectedCreatedRecap = selectedCreatedRecap
     }
 
+    @State private var tripForPopup: TripDraft?
+
     private var shouldShowSelectPhotosIntro: Bool {
         viewModel.scanState == .idle
             && !viewModel.tripDrafts.isEmpty
@@ -80,13 +82,29 @@ struct TripsView: View {
                 // Banner removed — shown in RecapBlogPageView on first save
             }
         }
+        .overlay {
+            if let trip = tripForPopup {
+                blogCreationPopup(trip: trip)
+            }
+        }
     }
+
+    // ... (rest of the file until myDraftsSection) ...
+    // Note: I cannot replace the whole file easily. I will execute multiple replacements or chunks.
+    // Wait, the instruction said "1. Add tripForPopup... 2. Implementation... 3. Update TripDraftRow... 4. Update sections...".
+    // I should probably use `multi_replace_file_content` for better precision if I can't comfortably replace a large chunk.
+    // However, `TripsView` is 731 lines.
+    // I will use `multi_replace_file_content`.
+    
+    // Changing strategy to `multi_replace_file_content` in the actual tool call below.
+    // This block is just for the tool call construction logic.
+
 
     private static let listHorizontalPadding: CGFloat = 20
     /// Once sheet is pulled down (offset > this), list scroll is locked. Use small value so lock engages immediately.
     private static let scrollLockThreshold: CGFloat = 0
     /// Scroll content minY >= this (in sheet space) means user is at top; then pull-down closes the sheet.
-    private static let scrollAtTopTolerance: CGFloat = 10
+    private static let scrollAtTopTolerance: CGFloat = 1
     /// Collapsed snap = this fraction of screen height (map revealed).
     private static let collapsedFraction: CGFloat = 0.85
 
@@ -432,12 +450,13 @@ struct TripsView: View {
                         .fontWeight(.semibold)
                         .foregroundColor(.white.opacity(0.85))
                     ForEach(group.trips) { trip in
-                        Button {
-                            createBlogFlowTrip = trip
-                        } label: {
-                            TripDraftRow(trip: trip)
-                        }
-                        .buttonStyle(.plain)
+                    ForEach(group.trips) { trip in
+                        TripDraftRow(
+                            trip: trip,
+                            onCoverTapped: { createBlogFlowTrip = trip },
+                            onTextTapped: { withAnimation { tripForPopup = trip } }
+                        )
+                    }
                     }
                 }
             }
@@ -477,12 +496,13 @@ struct TripsView: View {
                             .fontWeight(.semibold)
                             .foregroundColor(.white.opacity(0.85))
                         ForEach(group.trips) { trip in
-                            Button {
-                                createBlogFlowTrip = trip
-                            } label: {
-                                TripDraftRow(trip: trip)
-                            }
-                            .buttonStyle(.plain)
+                        ForEach(group.trips) { trip in
+                            TripDraftRow(
+                                trip: trip,
+                                onCoverTapped: { createBlogFlowTrip = trip },
+                                onTextTapped: { withAnimation { tripForPopup = trip } }
+                            )
+                        }
                         }
                     }
                 }
@@ -519,10 +539,73 @@ struct TripsView: View {
         .padding(.top, 16)
         .padding(.bottom, 28)
     }
+
+    private func blogCreationPopup(trip: TripDraft) -> some View {
+        ZStack {
+            Color.black.opacity(0.6)
+                .ignoresSafeArea()
+                .onTapGesture {
+                    withAnimation { tripForPopup = nil }
+                }
+
+            VStack(spacing: 20) {
+                Text("Create Recap Blog")
+                    .font(.title3)
+                    .fontWeight(.bold)
+                    .foregroundColor(.white)
+
+                Text("Would you like to turn \"\(trip.defaultBlogTitle)\" into a blog?")
+                    .font(.body)
+                    .foregroundColor(.white.opacity(0.8))
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal)
+
+                HStack(spacing: 16) {
+                    Button {
+                        withAnimation { tripForPopup = nil }
+                    } label: {
+                        Text("Cancel")
+                            .fontWeight(.medium)
+                            .foregroundColor(.white.opacity(0.7))
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 12)
+                            .background(Color.white.opacity(0.1))
+                            .cornerRadius(10)
+                    }
+
+                    Button {
+                        withAnimation { tripForPopup = nil }
+                        // Allow animation to finish slightly before opening the cover
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                            createBlogFlowTrip = trip
+                        }
+                    } label: {
+                        Text("Create")
+                            .fontWeight(.semibold)
+                            .foregroundColor(.white)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 12)
+                            .background(Color.blue)
+                            .cornerRadius(10)
+                    }
+                }
+                .padding(.horizontal)
+            }
+            .padding(.vertical, 24)
+            .background(Color(red: 0.15, green: 0.15, blue: 0.15))
+            .cornerRadius(16)
+            .shadow(radius: 20)
+            .padding(.horizontal, 40)
+            .transition(.scale.combined(with: .opacity))
+        }
+        .zIndex(200)
+    }
 }
 
 struct TripDraftRow: View {
     let trip: TripDraft
+    var onCoverTapped: () -> Void = {}
+    var onTextTapped: () -> Void = {}
 
     private static let cardCornerRadius: CGFloat = 12
     private static let contentPadding: CGFloat = 16
@@ -556,6 +639,8 @@ struct TripDraftRow: View {
                 .cornerRadius(6)
                 .padding(Self.draftBadgePadding)
         }
+        .contentShape(Rectangle())
+        .onTapGesture(perform: onCoverTapped)
     }
 
     private var textSection: some View {
@@ -570,6 +655,8 @@ struct TripDraftRow: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(Self.contentPadding)
+        .contentShape(Rectangle())
+        .onTapGesture(perform: onTextTapped)
     }
 
     /// "Trip to [City Name] in [Season]" (e.g. "Trip to Daegu in Winter"). Season empty when unknown. Matches defaultBlogTitle used when editing the blog title.
@@ -582,12 +669,13 @@ struct TripDraftRow: View {
 struct TripCoverImage: View {
     let theme: String
     var coverAssetIdentifier: String? = nil
+    var targetSize: CGSize = CGSize(width: 600, height: 400)
 
     var body: some View {
         ZStack {
             gradientForTheme(theme)
             if let id = coverAssetIdentifier {
-                AssetPhotoView(assetIdentifier: id, cornerRadius: 0, targetSize: CGSize(width: 600, height: 400))
+                AssetPhotoView(assetIdentifier: id, cornerRadius: 0, targetSize: targetSize)
             }
             optionalAssetOverlay
         }

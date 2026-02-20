@@ -15,7 +15,7 @@ private let horizontalPadding: CGFloat = 20
 struct MyBlogsProfileView: View {
     @EnvironmentObject private var createdRecapStore: CreatedRecapBlogStore
     @Binding var selectedCreatedRecap: CreatedRecapBlog?
-    @StateObject private var viewModel: MyBlogsProfileViewModel
+    @StateObject private var viewModel = MyBlogsProfileViewModel()
     @State private var selectedSection: CountrySection?
     @State private var showMyMap = false
     @State private var showViewAll = false
@@ -23,7 +23,6 @@ struct MyBlogsProfileView: View {
     @FocusState private var isSearchFocused: Bool
 
     init(createdRecapStore: CreatedRecapBlogStore, selectedCreatedRecap: Binding<CreatedRecapBlog?>) {
-        _viewModel = StateObject(wrappedValue: MyBlogsProfileViewModel())
         _selectedCreatedRecap = selectedCreatedRecap
     }
 
