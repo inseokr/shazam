@@ -14,7 +14,7 @@ import Foundation
 actor BlogRepository {
     static let shared = BlogRepository()
 
-    private let currentSchemaVersion = 1
+    private let currentSchemaVersion = 2
 
     private struct SchemaVersion: Codable, Sendable {
         var version: Int
@@ -70,8 +70,11 @@ actor BlogRepository {
         }
 
         if storedVersion < currentSchemaVersion {
-            // v0 → v1: No structural changes needed; just write the version file.
-            // Future migrations: add cases here.
+            // v0 → v1: No structural changes needed; initial version marker.
+            // v1 → v2: Added ownerScope, ownerUserId, cloudId, cloudState, syncStatus,
+            //          lastAutosaveAt to CreatedRecapBlog. Safe defaults are applied in
+            //          the custom Codable init (decodeIfPresent with fallback values).
+            //          No file restructuring required.
             writeSchemaVersion()
         }
     }

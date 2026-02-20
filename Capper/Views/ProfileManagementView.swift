@@ -30,26 +30,43 @@ struct ProfileManagementView: View {
             .sorted { ($0.tripStartDate ?? .distantPast) > ($1.tripStartDate ?? .distantPast) }
     }
 
-    private var notUploadedBlogs: [CreatedRecapBlog] {
+    /// Blogs that have a saved detail on disk but haven't been uploaded yet.
+    private var readyToUploadBlogs: [CreatedRecapBlog] {
         createdRecapStore.recents
-            .filter { !createdRecapStore.isBlogInCloud(blogId: $0.sourceTripId) }
+            .filter { !createdRecapStore.isBlogInCloud(blogId: $0.sourceTripId)
+                   && !isBlogDraft($0) }
             .sorted { ($0.tripStartDate ?? .distantPast) > ($1.tripStartDate ?? .distantPast) }
     }
 
+    /// Blogs that have NOT been saved yet (no RecapBlogDetail on disk). Upload is locked.
+    private var draftBlogs: [CreatedRecapBlog] {
+        createdRecapStore.recents
+            .filter { isBlogDraft($0) }
+            .sorted { $0.createdAt > $1.createdAt }
+    }
+
+    /// A blog is a draft when no RecapBlogDetail has been saved for it yet.
+    private func isBlogDraft(_ blog: CreatedRecapBlog) -> Bool {
+        createdRecapStore.getBlogDetail(blogId: blog.sourceTripId) == nil
+    }
+
     private var notUploadedCountries: [String] {
-        let countries = notUploadedBlogs.compactMap { $0.countryName }
+        let countries = readyToUploadBlogs.compactMap { $0.countryName }
         return Array(Set(countries)).sorted()
     }
 
     private var filteredNotUploadedBlogs: [CreatedRecapBlog] {
-        guard let country = selectedCountryFilter else { return notUploadedBlogs }
-        return notUploadedBlogs.filter { $0.countryName == country }
+        guard let country = selectedCountryFilter else { return readyToUploadBlogs }
+        return readyToUploadBlogs.filter { $0.countryName == country }
     }
+
+    @State private var showDraftsSheet = false
 
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(spacing: 24) {
+                ScrollViewReader { proxy in
+                    VStack(spacing: 24) {
 
                     // Header
                     VStack(spacing: 8) {
@@ -111,7 +128,7 @@ struct ProfileManagementView: View {
                         }
                     }
 
-                    // MARK: - Not Uploaded Section
+                    // MARK: - Not Uploaded / Ready-to-Upload Section
                     VStack(alignment: .leading, spacing: 12) {
                         HStack(spacing: 6) {
                             Image(systemName: "icloud.and.arrow.up")
@@ -120,7 +137,7 @@ struct ProfileManagementView: View {
                                 .font(.headline)
                                 .foregroundColor(.primary)
                             Spacer()
-                            Text("\(notUploadedBlogs.count)")
+                            Text("\(readyToUploadBlogs.count)")
                                 .font(.subheadline)
                                 .foregroundColor(.secondary)
                         }
@@ -144,7 +161,7 @@ struct ProfileManagementView: View {
                         }
 
                         if filteredNotUploadedBlogs.isEmpty {
-                            Text("No blogs here.")
+                            Text(readyToUploadBlogs.isEmpty ? "All uploaded or still in Draft." : "No blogs here.")
                                 .font(.subheadline)
                                 .foregroundColor(.secondary)
                                 .frame(maxWidth: .infinity)
@@ -152,17 +169,55 @@ struct ProfileManagementView: View {
                         } else {
                             LazyVStack(spacing: 12) {
                                 ForEach(filteredNotUploadedBlogs) { blog in
-                                    Button {
-                                        selectedBlog = blog
-                                    } label: {
+                                    Button { selectedBlog = blog } label: {
                                         ProfileManagementRow(
                                             blog: blog,
                                             isPublished: false,
+                                            isDraft: false,
                                             isUploading: uploadingBlogId == blog.sourceTripId,
                                             uploadProgress: uploadingBlogId == blog.sourceTripId ? uploadProgress : nil,
-                                            onToggle: {
-                                                uploadBlog(blog)
-                                            }
+                                            onToggle: { uploadBlog(blog) }
+                                        )
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+                            }
+                            .padding(.horizontal, 16)
+                        }
+                    }
+
+                    // MARK: - Drafts Section (not yet saved, upload locked)
+                    if !draftBlogs.isEmpty {
+                        VStack(alignment: .leading, spacing: 12) {
+                            HStack(spacing: 6) {
+                                Image(systemName: "doc.text")
+                                    .foregroundColor(.orange)
+                                Text("My Drafts")
+                                    .font(.headline)
+                                    .foregroundColor(.primary)
+                                Spacer()
+                                Text("\(draftBlogs.count)")
+                                    .font(.subheadline)
+                                    .foregroundColor(.secondary)
+                            }
+                            .padding(.horizontal, 16)
+                            .id("drafts-section")
+
+                            Text("Open a draft blog and save it before uploading to the cloud.")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                                .padding(.horizontal, 16)
+
+                            LazyVStack(spacing: 12) {
+                                ForEach(draftBlogs) { blog in
+                                    Button { selectedBlog = blog } label: {
+                                        ProfileManagementRow(
+                                            blog: blog,
+                                            isPublished: false,
+                                            isDraft: true,
+                                            isUploading: false,
+                                            uploadProgress: nil,
+                                            onToggle: { selectedBlog = blog } // Opens blog to finish saving
                                         )
                                     }
                                     .buttonStyle(.plain)
@@ -174,6 +229,13 @@ struct ProfileManagementView: View {
 
                     Spacer(minLength: 40)
                 }
+                .onChange(of: showDraftsSheet) { _, show in
+                    if show {
+                        withAnimation { proxy.scrollTo("drafts-section", anchor: .top) }
+                        showDraftsSheet = false
+                    }
+                }
+            }
             }
             .background(Color(uiColor: .systemGroupedBackground))
             .navigationBarTitleDisplayMode(.inline)
@@ -187,6 +249,20 @@ struct ProfileManagementView: View {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Done") { dismiss() }
                         .fontWeight(.semibold)
+                }
+                ToolbarItem(placement: .primaryAction) {
+                    if !draftBlogs.isEmpty {
+                        Button {
+                            showDraftsSheet = true
+                        } label: {
+                            HStack(spacing: 4) {
+                                Image(systemName: "doc.text")
+                                Text("My Drafts")
+                            }
+                            .font(.subheadline.weight(.medium))
+                            .foregroundColor(.orange)
+                        }
+                    }
                 }
             }
             .alert("Upload Failed", isPresented: $showUploadError) {
@@ -303,6 +379,7 @@ struct ProfileManagementView: View {
 struct ProfileManagementRow: View {
     let blog: CreatedRecapBlog
     let isPublished: Bool
+    var isDraft: Bool = false
     var isUploading: Bool = false
     var uploadProgress: (current: Int, total: Int)?
     let onToggle: () -> Void
@@ -316,6 +393,18 @@ struct ProfileManagementRow: View {
                 targetSize: CGSize(width: 180, height: 180)
             )
             .frame(width: 60, height: 60)
+            .overlay(alignment: .topLeading) {
+                if isDraft {
+                    Text("DRAFT")
+                        .font(.system(size: 8, weight: .heavy))
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 5)
+                        .padding(.vertical, 3)
+                        .background(Color.orange)
+                        .clipShape(RoundedRectangle(cornerRadius: 4))
+                        .offset(x: -4, y: -4)
+                }
+            }
 
             // Info
             VStack(alignment: .leading, spacing: 4) {
@@ -325,9 +414,13 @@ struct ProfileManagementRow: View {
                     .lineLimit(1)
 
                 if isUploading, let progress = uploadProgress {
-                    Text("Uploading \(progress.current)/\(progress.total)…")
+                    Text("Uploading \(progress.current)/\(progress.total)\u{2026}")
                         .font(.caption)
                         .foregroundColor(.blue)
+                } else if isDraft {
+                    Text("Open blog and save to enable upload")
+                        .font(.caption)
+                        .foregroundColor(.orange)
                 } else {
                     Text(blog.tripDateRangeText ?? "Unknown Date")
                         .font(.caption)
@@ -344,6 +437,11 @@ struct ProfileManagementRow: View {
                         ProgressView()
                             .tint(.blue)
                             .frame(width: 16, height: 16)
+                    } else if isDraft {
+                        HStack(spacing: 6) {
+                            Image(systemName: "lock.icloud")
+                            Text("Draft")
+                        }
                     } else {
                         HStack(spacing: 6) {
                             Image(systemName: isPublished ? "checkmark.icloud.fill" : "icloud.and.arrow.up")
@@ -352,20 +450,21 @@ struct ProfileManagementRow: View {
                     }
                 }
                 .font(.system(.subheadline, weight: .medium))
-                .foregroundColor(isPublished ? .green : .blue)
+                .foregroundColor(isDraft ? .orange : (isPublished ? .green : .blue))
                 .padding(.horizontal, 12)
                 .padding(.vertical, 8)
                 .background(
                     RoundedRectangle(cornerRadius: 8)
-                        .fill(isPublished ? Color.green.opacity(0.1) : Color.blue.opacity(0.1))
+                        .fill(isDraft ? Color.orange.opacity(0.1) : (isPublished ? Color.green.opacity(0.1) : Color.blue.opacity(0.1)))
                 )
             }
             .buttonStyle(.plain)
-            .disabled(isUploading)
+            .disabled(isUploading || isDraft)
         }
         .padding(12)
         .background(Color(uiColor: .secondarySystemGroupedBackground))
         .clipShape(RoundedRectangle(cornerRadius: 16))
+        .opacity(isDraft ? 0.85 : 1.0)
     }
 }
 

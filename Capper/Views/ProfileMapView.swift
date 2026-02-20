@@ -66,7 +66,12 @@ struct ProfileMapView: View {
         }
         .onAppear {
             viewModel.onAppear()
+            // mapPosition is set reactively via onChange(of: mapRegionChangeCounter),
+            // but seed it here too so there's no blank frame.
             mapPosition = .region(viewModel.mapRegion)
+            // Seed scroll position synchronously — onChange(of: selectedTripID)
+            // may not fire in the same run loop tick as the view appearing.
+            scrolledTripID = viewModel.visibleTrips.first?.sourceTripId
         }
         .onChange(of: viewModel.mapRegionChangeCounter) { _, _ in
             withAnimation {
@@ -102,9 +107,15 @@ struct ProfileMapView: View {
                 isSelected: viewModel.selectedTripID == item.blog.sourceTripId
             )
             .onTapGesture {
-                withAnimation {
-                    viewModel.selectTrip(item.blog.sourceTripId)
-                    viewModel.recenterToTrip(item.blog)
+                if viewModel.selectedTripID == item.blog.sourceTripId {
+                    // Already selected — second tap opens the blog
+                    selectedBlogForNavigation = item.blog
+                } else {
+                    // First tap — select and scroll card into view
+                    withAnimation {
+                        viewModel.selectTrip(item.blog.sourceTripId)
+                        viewModel.recenterToTrip(item.blog)
+                    }
                 }
             }
         }
@@ -178,16 +189,14 @@ struct ProfileMapView: View {
             let cardHeight: CGFloat = 104
             
             ScrollView(.horizontal, showsIndicators: false) {
-                LazyHStack(spacing: 16) {
+                HStack(spacing: 16) {
                     ForEach(viewModel.visibleTrips, id: \.sourceTripId) { trip in
                         ProfileMapCardView(
                             blog: trip,
                             isSelected: viewModel.selectedTripID == trip.sourceTripId,
                             onTap: {
-                                withAnimation {
-                                    viewModel.selectTrip(trip.sourceTripId)
-                                    viewModel.recenterToTrip(trip)
-                                }
+                                // Card tap always navigates to the blog
+                                selectedBlogForNavigation = trip
                             },
                             onNavigate: {
                                 selectedBlogForNavigation = trip
@@ -236,6 +245,14 @@ struct ProfileMapView: View {
                 .clipShape(Capsule())
         }
         .buttonStyle(.plain)
+    }
+}
+
+// MARK: - Safe Collection Subscript (shared by map views)
+
+extension Collection {
+    subscript(safe index: Index) -> Element? {
+        indices.contains(index) ? self[index] : nil
     }
 }
 

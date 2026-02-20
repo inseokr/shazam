@@ -37,6 +37,14 @@ struct BlogSettingsSheet: View {
                     } label: {
                         Label("Change Cover Photo", systemImage: "photo")
                     }
+                    if onEditMode != nil {
+                        Button {
+                            onEditMode?()
+                            dismiss()
+                        } label: {
+                            Label("Edit Mode", systemImage: "pencil")
+                        }
+                    }
                 }
 
                 if hasCloudPhotos {
@@ -52,15 +60,6 @@ struct BlogSettingsSheet: View {
                 }
 
                 Section {
-                    if onEditMode != nil {
-                        Button {
-                            onEditMode?()
-                            dismiss()
-                        } label: {
-                            Label("Edit Mode", systemImage: "pencil")
-                        }
-                    }
-
                     Button(role: .destructive) {
                         showDeleteConfirmation = true
                     } label: {

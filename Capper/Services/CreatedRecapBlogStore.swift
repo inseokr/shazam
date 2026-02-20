@@ -8,34 +8,98 @@ import CoreLocation
 import Foundation
 import SwiftUI
 
+// MARK: - Blog Ownership & Sync Enums
+
+/// Whether the blog belongs to an anonymous (logged-out) session or a signed-in account.
+enum OwnerScope: String, Codable, Sendable {
+    case anonymous
+    case account
+}
+
+/// The cloud lifecycle state of a local blog.
+enum CloudState: String, Codable, Sendable {
+    /// Never uploaded; exists on-device only.
+    case localOnly
+    /// Uploaded and currently active (visible to public if published).
+    case uploadedActive
+    /// Uploaded but archived (hidden from public).
+    case uploadedArchived
+}
+
+/// Sync reconciliation status for merge operations.
+enum SyncStatus: String, Codable, Sendable {
+    case clean
+    case localOnly   // reassigned anon draft; needs explicit upload first
+    case needsUpload
+    case needsSync   // remote is newer; pull would update local
+    case conflict    // diverged on both sides
+}
+
 /// A recap blog that was created from a draft trip. Stored so we can hide the draft from Trips and show it in Landing Recents.
 struct CreatedRecapBlog: Identifiable, Equatable, Hashable, Codable, Sendable {
     let id: UUID
     let sourceTripId: UUID
-    let title: String
+    var title: String
     let createdAt: Date
-    let coverImageName: String
-    let coverAssetIdentifier: String?
+    var coverImageName: String
+    var coverAssetIdentifier: String?
     /// Number of places visited (stops).
-    let totalPlaceVisitCount: Int
+    var totalPlaceVisitCount: Int
     /// Duration of the trip in days.
-    let tripDurationDays: Int
+    var tripDurationDays: Int
     /// Number of selected photos
-    let selectedPhotoCount: Int
+    var selectedPhotoCount: Int
     /// Primary country name
-    let countryName: String?
+    var countryName: String?
     /// Display text for date range
-    let tripDateRangeText: String?
+    var tripDateRangeText: String?
     /// Last edit timestamp
-    let lastEditedAt: Date?
+    var lastEditedAt: Date?
     /// Start date of the trip
-    let tripStartDate: Date?
+    var tripStartDate: Date?
     /// End date of the trip
-    let tripEndDate: Date?
+    var tripEndDate: Date?
     /// First available note or caption
-    let caption: String?
+    var caption: String?
 
-    init(id: UUID = UUID(), sourceTripId: UUID, title: String, createdAt: Date, coverImageName: String, coverAssetIdentifier: String? = nil, selectedPhotoCount: Int, countryName: String? = nil, tripDateRangeText: String? = nil, lastEditedAt: Date? = nil, tripStartDate: Date? = nil, tripEndDate: Date? = nil, totalPlaceVisitCount: Int = 0, tripDurationDays: Int = 1, caption: String? = nil) {
+    // MARK: - Ownership & Sync (v2 schema)
+
+    /// Whether this blog was created while logged out (anonymous) or by a signed-in account.
+    var ownerScope: OwnerScope
+    /// The userId that owns this blog. Nil when ownerScope == .anonymous.
+    var ownerUserId: String?
+    /// Server-assigned id once the blog has been uploaded. Nil until first upload.
+    var cloudId: String?
+    /// Cloud lifecycle state.
+    var cloudState: CloudState
+    /// Sync reconciliation status.
+    var syncStatus: SyncStatus
+    /// Timestamp of the last autosave.
+    var lastAutosaveAt: Date?
+
+    init(
+        id: UUID = UUID(),
+        sourceTripId: UUID,
+        title: String,
+        createdAt: Date,
+        coverImageName: String,
+        coverAssetIdentifier: String? = nil,
+        selectedPhotoCount: Int,
+        countryName: String? = nil,
+        tripDateRangeText: String? = nil,
+        lastEditedAt: Date? = nil,
+        tripStartDate: Date? = nil,
+        tripEndDate: Date? = nil,
+        totalPlaceVisitCount: Int = 0,
+        tripDurationDays: Int = 1,
+        caption: String? = nil,
+        ownerScope: OwnerScope = .anonymous,
+        ownerUserId: String? = nil,
+        cloudId: String? = nil,
+        cloudState: CloudState = .localOnly,
+        syncStatus: SyncStatus = .clean,
+        lastAutosaveAt: Date? = nil
+    ) {
         self.id = id
         self.sourceTripId = sourceTripId
         self.title = title
@@ -51,6 +115,40 @@ struct CreatedRecapBlog: Identifiable, Equatable, Hashable, Codable, Sendable {
         self.totalPlaceVisitCount = totalPlaceVisitCount
         self.tripDurationDays = tripDurationDays
         self.caption = caption
+        self.ownerScope = ownerScope
+        self.ownerUserId = ownerUserId
+        self.cloudId = cloudId
+        self.cloudState = cloudState
+        self.syncStatus = syncStatus
+        self.lastAutosaveAt = lastAutosaveAt
+    }
+
+    // MARK: - Codable with safe defaults for v1 → v2 migration
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id                  = try c.decode(UUID.self, forKey: .id)
+        sourceTripId        = try c.decode(UUID.self, forKey: .sourceTripId)
+        title               = try c.decode(String.self, forKey: .title)
+        createdAt           = try c.decode(Date.self, forKey: .createdAt)
+        coverImageName      = try c.decode(String.self, forKey: .coverImageName)
+        coverAssetIdentifier = try c.decodeIfPresent(String.self, forKey: .coverAssetIdentifier)
+        totalPlaceVisitCount = try c.decodeIfPresent(Int.self, forKey: .totalPlaceVisitCount) ?? 0
+        tripDurationDays    = try c.decodeIfPresent(Int.self, forKey: .tripDurationDays) ?? 1
+        selectedPhotoCount  = try c.decodeIfPresent(Int.self, forKey: .selectedPhotoCount) ?? 0
+        countryName         = try c.decodeIfPresent(String.self, forKey: .countryName)
+        tripDateRangeText   = try c.decodeIfPresent(String.self, forKey: .tripDateRangeText)
+        lastEditedAt        = try c.decodeIfPresent(Date.self, forKey: .lastEditedAt)
+        tripStartDate       = try c.decodeIfPresent(Date.self, forKey: .tripStartDate)
+        tripEndDate         = try c.decodeIfPresent(Date.self, forKey: .tripEndDate)
+        caption             = try c.decodeIfPresent(String.self, forKey: .caption)
+        // v2 fields – default gracefully for v1 data on disk
+        ownerScope          = try c.decodeIfPresent(OwnerScope.self, forKey: .ownerScope) ?? .anonymous
+        ownerUserId         = try c.decodeIfPresent(String.self, forKey: .ownerUserId)
+        cloudId             = try c.decodeIfPresent(String.self, forKey: .cloudId)
+        cloudState          = try c.decodeIfPresent(CloudState.self, forKey: .cloudState) ?? .localOnly
+        syncStatus          = try c.decodeIfPresent(SyncStatus.self, forKey: .syncStatus) ?? .clean
+        lastAutosaveAt      = try c.decodeIfPresent(Date.self, forKey: .lastAutosaveAt)
     }
 }
 
@@ -92,6 +190,26 @@ final class CreatedRecapBlogStore: ObservableObject {
         self.blogDetailsBySourceId = details
         self.tripDraftsBySourceId = drafts
         self.isLoading = false
+        
+        // One-time fix: blogs saved before the v2 schema have ownerScope == .anonymous
+        // by default (Codable fallback). If the user is currently signed in, claim them.
+        migrateOwnerScopeIfNeeded()
+    }
+
+    /// Claims any blogs that are still `.anonymous` without an ownerUserId —
+    /// i.e. old v1 blogs that predate the ownerScope field — and assigns them to
+    /// the currently signed-in user. Safe to call on every launch; it's a no-op
+    /// once all blogs have been properly assigned.
+    private func migrateOwnerScopeIfNeeded() {
+        guard let userId = AuthService.shared.currentUser?.id else { return }
+        var didChange = false
+        for idx in recents.indices
+        where recents[idx].ownerScope == .anonymous && recents[idx].ownerUserId == nil {
+            recents[idx].ownerScope = .account
+            recents[idx].ownerUserId = userId
+            didChange = true
+        }
+        if didChange { persistIndex() }
     }
 
     private func persistIndex() {
@@ -102,8 +220,94 @@ final class CreatedRecapBlogStore: ObservableObject {
 
     // MARK: - Public API
 
+    // MARK: Auth-Aware Filtering
+
+    /// Blogs visible for the given auth state.
+    /// - Logged out: anonymous blogs only.
+    /// - Logged in(userId): blogs owned by that userId (account-scoped).
+    func visibleBlogs(for authState: AuthState) -> [CreatedRecapBlog] {
+        switch authState {
+        case .loggedOut:
+            return recents.filter { $0.ownerScope == .anonymous }
+        case .loggedIn(let userId):
+            return recents.filter { $0.ownerScope == .account && $0.ownerUserId == userId }
+        }
+    }
+
+    /// All blogs created while the user was signed out.
+    var anonymousDrafts: [CreatedRecapBlog] {
+        recents.filter { $0.ownerScope == .anonymous }
+    }
+
+    /// Reassigns every anonymous draft to the given userId.
+    /// Sets syncStatus = .localOnly — does NOT trigger any upload.
+    func importAnonymousDrafts(into userId: String) {
+        for idx in recents.indices where recents[idx].ownerScope == .anonymous {
+            recents[idx].ownerScope = .account
+            recents[idx].ownerUserId = userId
+            recents[idx].syncStatus = .localOnly
+        }
+        persistIndex()
+    }
+
+    /// Reassigns a single anonymous draft to the given userId.
+    func importSingleAnonymousDraft(_ draft: CreatedRecapBlog, into userId: String) {
+        guard let idx = recents.firstIndex(where: { $0.id == draft.id }),
+              recents[idx].ownerScope == .anonymous else { return }
+        recents[idx].ownerScope = .account
+        recents[idx].ownerUserId = userId
+        recents[idx].syncStatus = .localOnly
+        persistIndex()
+    }
+
+    // MARK: Cloud Sync (Pull-only)
+
+    /// Merges a cloud blog record into the local store.
+    /// - If a local blog with matching cloudId exists → update fields when remote is newer.
+    /// - If not found locally → insert as a new account-owned blog.
+    func mergeCloudBlog(_ cloud: CloudBlog, ownedBy userId: String) {
+        if let idx = recents.firstIndex(where: { $0.cloudId == cloud.id }) {
+            // Update local if remote updatedAt is newer
+            guard let remoteUpdated = cloud.updatedAt,
+                  let localEdited = recents[idx].lastEditedAt,
+                  remoteUpdated > localEdited else { return }
+            recents[idx].title = cloud.title
+            recents[idx].cloudState = cloud.isArchived ? .uploadedArchived : .uploadedActive
+            recents[idx].syncStatus = .clean
+        } else {
+            // Insert remote-only blog as account-owned
+            let blog = CreatedRecapBlog(
+                id: UUID(),
+                sourceTripId: UUID(),
+                title: cloud.title,
+                createdAt: cloud.createdAt ?? Date(),
+                coverImageName: cloud.coverImageName ?? "",
+                coverAssetIdentifier: nil,
+                selectedPhotoCount: 0,
+                countryName: cloud.countryName,
+                tripDateRangeText: cloud.tripDateRangeText,
+                lastEditedAt: cloud.updatedAt,
+                tripStartDate: nil,
+                tripEndDate: nil,
+                totalPlaceVisitCount: 0,
+                tripDurationDays: 1,
+                caption: nil,
+                ownerScope: .account,
+                ownerUserId: userId,
+                cloudId: cloud.id,
+                cloudState: cloud.isArchived ? .uploadedArchived : .uploadedActive,
+                syncStatus: .clean
+            )
+            recents.append(blog)
+        }
+        persistIndex()
+    }
+
     /// Call when user completes the Create Blog sequence (before showing RecapSavedView).
-    func addCreatedBlog(trip: TripDraft) {
+    /// - Parameters:
+    ///   - ownerScope: `.anonymous` for logged-out users, `.account` when signed in.
+    ///   - ownerUserId: The current user's id. Pass nil when logged out.
+    func addCreatedBlog(trip: TripDraft, ownerScope: OwnerScope = .anonymous, ownerUserId: String? = nil) {
         let startDate = trip.earliestDate
         let endDate = trip.latestDate
         // Build detail to get place count (stops)
@@ -125,7 +329,9 @@ final class CreatedRecapBlogStore: ObservableObject {
             tripEndDate: endDate,
             totalPlaceVisitCount: placeCount,
             tripDurationDays: duration,
-            caption: nil
+            caption: nil,
+            ownerScope: ownerScope,
+            ownerUserId: ownerUserId
         )
         tripDraftsBySourceId[trip.id] = trip
         recents.insert(blog, at: 0)

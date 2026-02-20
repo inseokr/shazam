@@ -37,19 +37,26 @@ struct ProfileTheme {
 struct ProfilePageView: View {
     @EnvironmentObject private var createdRecapStore: CreatedRecapBlogStore
     @EnvironmentObject private var authService: AuthService
+    @EnvironmentObject private var authStateManager: AuthStateManager
     @Binding var selectedCreatedRecap: CreatedRecapBlog?
     
     @StateObject private var viewModel = MyBlogsProfileViewModel()
     @State private var selectedCountryID: String? = nil
     @State private var showMyMap = false
+    @State private var showManagementSheet = false
     /// Local navigation state — avoids conflicting with the global selectedCreatedRecap binding
     @State private var selectedBlogToOpen: CreatedRecapBlog? = nil
     @State private var isSearchActive = false
     @FocusState private var isSearchFocused: Bool
     
-    /// Only cloud-published blogs appear on the profile.
+    /// Only cloud-published blogs appear on the profile (logged-in view).
     private var publishedBlogs: [CreatedRecapBlog] {
         createdRecapStore.cloudPublishedBlogs.sorted { ($0.tripStartDate ?? .distantPast) > ($1.tripStartDate ?? .distantPast) }
+    }
+
+    /// Local anonymous blogs visible when logged out.
+    private var localBlogs: [CreatedRecapBlog] {
+        createdRecapStore.anonymousDrafts.sorted { ($0.createdAt) > ($1.createdAt) }
     }
 
     private var uniqueCountries: [String] {
@@ -84,33 +91,58 @@ struct ProfilePageView: View {
                 ProfileHeroSection()
                     .environmentObject(authService)
                     .environmentObject(createdRecapStore)
+                    .environmentObject(authStateManager)
                     .padding(.top, ProfileTheme.Spacing.xl)
                 
-                // 2. Stories Section
+                // 2. Stories Section — branches on auth state
                 VStack(alignment: .leading, spacing: ProfileTheme.Spacing.xl) {
-                    
-                    // Section Title
-                    Text("Published Blogs")
-                        .font(ProfileTheme.Typography.metadata)
-                        .textCase(.uppercase)
-                        .foregroundColor(.secondary)
-                        .kerning(1.2) // Adds tracking for editorial feel
-                        .padding(.horizontal, ProfileTheme.Spacing.md)
-                    
-                    // Content
-                    if createdRecapStore.isLoading {
-                        ProfileLoadingSkeleton()
-                    } else if publishedBlogs.isEmpty {
-                        ProfileEmptyState()
+                    if authStateManager.isLoggedIn {
+                        // --- LOGGED IN: Published cloud blogs ---
+                        Text("Published Blogs")
+                            .font(ProfileTheme.Typography.metadata)
+                            .textCase(.uppercase)
+                            .foregroundColor(.secondary)
+                            .kerning(1.2)
+                            .padding(.horizontal, ProfileTheme.Spacing.md)
+
+                        if createdRecapStore.isLoading {
+                            ProfileLoadingSkeleton()
+                        } else if publishedBlogs.isEmpty {
+                            ProfileEmptyState {
+                                showManagementSheet = true
+                            }
+                        } else {
+                            VStack(alignment: .leading, spacing: ProfileTheme.Spacing.md) {
+                                countryFilterBar
+                                StoryFeedSection(
+                                    blogs: filteredBlogs,
+                                    selectedBlog: $selectedBlogToOpen
+                                )
+                            }
+                        }
                     } else {
-                        VStack(alignment: .leading, spacing: ProfileTheme.Spacing.md) {
-                            countryFilterBar
-                            
+                        // --- LOGGED OUT: Local anonymous drafts + cloud CTA ---
+                        Text("Local Drafts")
+                            .font(ProfileTheme.Typography.metadata)
+                            .textCase(.uppercase)
+                            .foregroundColor(.secondary)
+                            .kerning(1.2)
+                            .padding(.horizontal, ProfileTheme.Spacing.md)
+
+                        if createdRecapStore.isLoading {
+                            ProfileLoadingSkeleton()
+                        } else if localBlogs.isEmpty {
+                            LocalBlogsEmptyState()
+                        } else {
                             StoryFeedSection(
-                                blogs: filteredBlogs,
+                                blogs: localBlogs,
                                 selectedBlog: $selectedBlogToOpen
                             )
                         }
+
+                        // Cloud locked CTA
+                        LockedCloudSection()
+                            .padding(.horizontal, ProfileTheme.Spacing.md)
                     }
                 }
             }
@@ -167,6 +199,10 @@ struct ProfilePageView: View {
             if !shareItems.isEmpty {
                 ShareSheet(items: shareItems)
             }
+        }
+        .sheet(isPresented: $showManagementSheet) {
+            ProfileManagementView()
+                .environmentObject(createdRecapStore)
         }
         .onAppear {
             viewModel.loadUnsavedTrips()
@@ -619,37 +655,45 @@ struct StoryFeedSection: View {
 // MARK: - Stats Line
 struct ProfileStatsLine: View {
     @EnvironmentObject private var createdRecapStore: CreatedRecapBlogStore
+    @EnvironmentObject private var authStateManager: AuthStateManager
 
     var body: some View {
-        let published = createdRecapStore.cloudPublishedBlogs
-        let countryCount = Set(published.compactMap { $0.countryName }).count
-        let blogCount = published.count
+        if authStateManager.isLoggedIn {
+            let published = createdRecapStore.cloudPublishedBlogs
+            let countryCount = Set(published.compactMap { $0.countryName }).count
+            let blogCount = published.count
 
-        if blogCount > 0 {
-            Text("\(countryCount) \(countryCount == 1 ? "Country" : "Countries") \u{2022} \(blogCount) \(blogCount == 1 ? "Blog" : "Blogs")")
-                .font(ProfileTheme.Typography.metadata)
-                .foregroundColor(.secondary)
+            if blogCount > 0 {
+                Text("\(countryCount) \(countryCount == 1 ? "Country" : "Countries") \u{2022} \(blogCount) \(blogCount == 1 ? "Blog" : "Blogs")")
+                    .font(ProfileTheme.Typography.metadata)
+                    .foregroundColor(.secondary)
+            } else {
+                Text("No published blogs yet")
+                    .font(ProfileTheme.Typography.metadata)
+                    .foregroundColor(.secondary)
+            }
         } else {
-            Text("No published blogs yet")
+            let draftCount = createdRecapStore.anonymousDrafts.count
+            Text(draftCount == 0 ? "No local drafts" : "\(draftCount) local \(draftCount == 1 ? "draft" : "drafts")")
                 .font(ProfileTheme.Typography.metadata)
                 .foregroundColor(.secondary)
         }
     }
 }
 
-// MARK: - Empty State View
-struct ProfileEmptyState: View {
+// MARK: - Local Blogs Empty State (logged-out)
+struct LocalBlogsEmptyState: View {
     var body: some View {
         VStack(spacing: ProfileTheme.Spacing.md) {
-            Image(systemName: "icloud.and.arrow.up")
+            Image(systemName: "doc.text")
                 .font(.system(size: 36))
                 .foregroundColor(.secondary)
 
-            Text("No published blogs yet")
+            Text("No local drafts yet")
                 .font(ProfileTheme.Typography.storyTitle)
                 .foregroundColor(.primary)
 
-            Text("Upload a blog to the cloud and it will appear here on your profile.")
+            Text("Create a blog from the Trips tab and it will appear here as a local draft.")
                 .font(ProfileTheme.Typography.bio)
                 .foregroundColor(.secondary)
                 .multilineTextAlignment(.center)
@@ -657,6 +701,121 @@ struct ProfileEmptyState: View {
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, ProfileTheme.Spacing.massive)
+    }
+}
+
+// MARK: - Locked Cloud Section (logged-out CTA)
+struct LockedCloudSection: View {
+    @State private var showAuth = false
+
+    var body: some View {
+        VStack(spacing: ProfileTheme.Spacing.md) {
+            // Divider line
+            HStack {
+                Rectangle()
+                    .fill(Color.primary.opacity(0.08))
+                    .frame(height: 1)
+            }
+            .padding(.bottom, ProfileTheme.Spacing.xs)
+
+            HStack(spacing: ProfileTheme.Spacing.md) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 12)
+                        .fill(
+                            LinearGradient(
+                                colors: [Color.blue.opacity(0.12), Color.indigo.opacity(0.08)],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                        .frame(width: 52, height: 52)
+
+                    Image(systemName: "lock.icloud")
+                        .font(.system(size: 22))
+                        .foregroundStyle(
+                            LinearGradient(
+                                colors: [.blue, .indigo],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                }
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Cloud publishing & sharing")
+                        .font(.system(.subheadline).weight(.semibold))
+                        .foregroundColor(.primary)
+                    Text("Sign in to upload blogs, generate links, and access web editing.")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                        .lineLimit(2)
+                }
+
+                Spacer(minLength: 0)
+            }
+
+            Button {
+                showAuth = true
+            } label: {
+                Text("Sign in to unlock")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundColor(.white)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 48)
+                    .background(
+                        LinearGradient(
+                            colors: [.blue, .indigo],
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        )
+                    )
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(ProfileTheme.Spacing.md)
+        .background(
+            RoundedRectangle(cornerRadius: 16)
+                .fill(Color(.secondarySystemBackground))
+        )
+    }
+}
+
+// MARK: - Empty State View (logged-in)
+struct ProfileEmptyState: View {
+    var onTap: (() -> Void)? = nil
+
+    var body: some View {
+        Button {
+            onTap?()
+        } label: {
+            VStack(spacing: ProfileTheme.Spacing.md) {
+                Image(systemName: "icloud.and.arrow.up")
+                    .font(.system(size: 36))
+                    .foregroundColor(.secondary)
+
+                Text("No published blogs yet")
+                    .font(ProfileTheme.Typography.storyTitle)
+                    .foregroundColor(.primary)
+
+                Text("Upload a blog to the cloud and it will appear here on your profile.")
+                    .font(ProfileTheme.Typography.bio)
+                    .foregroundColor(.secondary)
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: 280)
+
+                if onTap != nil {
+                    Text("Tap to manage blogs")
+                        .font(.caption.weight(.medium))
+                        .foregroundColor(.blue)
+                        .padding(.top, 4)
+                }
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, ProfileTheme.Spacing.massive)
+        }
+        .buttonStyle(.plain)
+        .disabled(onTap == nil)
     }
 }
 

@@ -985,7 +985,6 @@ struct RecapBlogPageView: View {
                 Image(systemName: "chevron.left")
                     .font(.body.weight(.semibold))
             }
-            .padding(.leading, 12)
         }
         ToolbarItem(placement: .topBarTrailing) {
             if isEditMode {

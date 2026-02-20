@@ -325,35 +325,49 @@ struct FullScreenMapView: View {
         .preferredColorScheme(.dark)
     }
 
+    @State private var scrolledPlaceID: UUID?
+
     private func placeCardsStrip(in geo: GeometryProxy) -> some View {
         let cardWidth = min(geo.size.width * 0.80, 340)
-        let cardHeight: CGFloat = 130 // Slightly taller for better premium feel
-        
+        let cardHeight: CGFloat = 130
+
         return ScrollView(.horizontal, showsIndicators: false) {
-            LazyHStack(spacing: 16) {
+            HStack(spacing: 16) {
                 ForEach(Array(day.placeStops.enumerated()), id: \.element.id) { index, stop in
                     PlaceMapCardView(stop: stop, stopNumber: index + 1, isSelected: selectedPlaceIndex == index)
                         .frame(width: cardWidth, height: cardHeight)
-                        .tag(index) // For scrollPosition to track
-                        // Add slight scale effect when selected
-                        .scaleEffect(selectedPlaceIndex == index ? 1.0 : 0.95)
+                        .id(stop.id)
+                        .scaleEffect(selectedPlaceIndex == index ? 1.02 : 0.95)
                         .opacity(selectedPlaceIndex == index ? 1.0 : 0.6)
                         .animation(.spring(response: 0.35, dampingFraction: 0.8), value: selectedPlaceIndex)
                 }
             }
             .scrollTargetLayout()
         }
-        .safeAreaPadding(.horizontal, (geo.size.width - cardWidth) / 2) // This precisely centers the focused card
+        .safeAreaPadding(.horizontal, (geo.size.width - cardWidth) / 2)
         .scrollTargetBehavior(.viewAligned)
-        .scrollPosition(id: Binding(
-            get: { selectedPlaceIndex },
-            set: { newValue in
-                if let newIndex = newValue {
+        .scrollPosition(id: $scrolledPlaceID)
+        .onChange(of: scrolledPlaceID) { _, newID in
+            // Card snapped — update index and recenter map
+            if let newID,
+               let newIndex = day.placeStops.firstIndex(where: { $0.id == newID }),
+               newIndex != selectedPlaceIndex {
+                withAnimation(.spring(response: 0.45, dampingFraction: 0.8)) {
                     selectedPlaceIndex = newIndex
                 }
             }
-        ))
-        .frame(height: cardHeight + 20) // Extra height for scale effect breathing room
+        }
+        .onChange(of: selectedPlaceIndex) { _, newIndex in
+            // Annotation/button tap drives scroll position
+            if let id = day.placeStops[safe: newIndex]?.id, scrolledPlaceID != id {
+                scrolledPlaceID = id
+            }
+        }
+        .onAppear {
+            // Seed initial scroll position to first card
+            scrolledPlaceID = day.placeStops.first?.id
+        }
+        .frame(height: cardHeight + 20)
     }
 }
 

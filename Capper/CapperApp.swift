@@ -12,6 +12,8 @@ import UIKit
 struct CapperApp: App {
     @StateObject private var photoAuth = PhotosAuthorizationManager()
     @StateObject private var authService = AuthService.shared
+    @StateObject private var authStateManager = AuthStateManager.shared
+    @StateObject private var createdRecapStore = CreatedRecapBlogStore.shared
     @AppStorage("blogify.hasCompletedOnboarding") private var hasCompletedOnboarding = false
     @Environment(\.scenePhase) private var scenePhase
 
@@ -34,10 +36,12 @@ struct CapperApp: App {
                 }
             }
             .environmentObject(authService)
+            .environmentObject(authStateManager)
+            .environmentObject(createdRecapStore)
             .onAppear {
-                // Ensure auth status is fresh
                 photoAuth.refreshStatus()
             }
+            // Autosave on scene phase changes
             .onChange(of: scenePhase) { _, newPhase in
                 if newPhase == .inactive || newPhase == .background {
                     Task {
@@ -46,6 +50,21 @@ struct CapperApp: App {
                         )
                     }
                 }
+            }
+            // Sync + import prompt on login
+            .onChange(of: authStateManager.authState) { _, newState in
+                if case .loggedIn(let userId) = newState {
+                    Task {
+                        await SyncEngine.shared.fetchAndMerge(userId: userId)
+                        authStateManager.checkAndPromptImportIfNeeded()
+                    }
+                }
+            }
+            // Import drafts modal (presented at app root so it overlays any screen)
+            .sheet(isPresented: $authStateManager.showImportDraftsModal) {
+                ImportDraftsModalView()
+                    .environmentObject(authStateManager)
+                    .environmentObject(createdRecapStore)
             }
         }
     }

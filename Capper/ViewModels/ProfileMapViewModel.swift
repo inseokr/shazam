@@ -59,8 +59,9 @@ final class ProfileMapViewModel: ObservableObject {
     }
 
     /// Latest trip overall (for initial map center and "back to all" recenter).
+    /// Uses visibleTrips which is already sorted newest → oldest.
     var latestTripOverall: CreatedRecapBlog? {
-        allTrips.first
+        visibleTrips.first
     }
 
     /// Latest trip in the selected country (for recenter when country is selected).
@@ -82,7 +83,7 @@ final class ProfileMapViewModel: ObservableObject {
         }
     }
 
-    /// Set country filter and recenter map to latest trip in that country.
+    /// Set country filter and recenter map + scroll card list to latest trip in that country.
     func selectCountry(_ countryID: String?) {
         selectedCountryID = countryID
         if countryID != nil {
@@ -90,6 +91,8 @@ final class ProfileMapViewModel: ObservableObject {
         } else {
             recenterToLatestTrip()
         }
+        // Always select the first (latest) visible trip so the card list scrolls to it.
+        selectedTripID = visibleTrips.first?.sourceTripId
     }
 
     /// Select a trip (from map or list); used for highlight and optional callout.
@@ -141,9 +144,12 @@ final class ProfileMapViewModel: ObservableObject {
         mapRegionChangeCounter += 1
     }
 
-    /// Call when view appears to center on latest trip.
+    /// Call when view appears to center on latest trip and select it in the card list.
     func onAppear() {
         if selectedCountryID == nil {
+            // Select the latest (newest) trip first so the card scroll receives it
+            // via onChange(of: selectedTripID), then recenter the map.
+            selectedTripID = visibleTrips.first?.sourceTripId
             recenterToLatestTrip()
         }
     }
