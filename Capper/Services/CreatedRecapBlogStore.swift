@@ -260,49 +260,6 @@ final class CreatedRecapBlogStore: ObservableObject {
         persistIndex()
     }
 
-    // MARK: Cloud Sync (Pull-only)
-
-    /// Merges a cloud blog record into the local store.
-    /// - If a local blog with matching cloudId exists → update fields when remote is newer.
-    /// - If not found locally → insert as a new account-owned blog.
-    func mergeCloudBlog(_ cloud: CloudBlog, ownedBy userId: String) {
-        if let idx = recents.firstIndex(where: { $0.cloudId == cloud.id }) {
-            // Update local if remote updatedAt is newer
-            guard let remoteUpdated = cloud.updatedAt,
-                  let localEdited = recents[idx].lastEditedAt,
-                  remoteUpdated > localEdited else { return }
-            recents[idx].title = cloud.title
-            recents[idx].cloudState = cloud.isArchived ? .uploadedArchived : .uploadedActive
-            recents[idx].syncStatus = .clean
-        } else {
-            // Insert remote-only blog as account-owned
-            let blog = CreatedRecapBlog(
-                id: UUID(),
-                sourceTripId: UUID(),
-                title: cloud.title,
-                createdAt: cloud.createdAt ?? Date(),
-                coverImageName: cloud.coverImageName ?? "",
-                coverAssetIdentifier: nil,
-                selectedPhotoCount: 0,
-                countryName: cloud.countryName,
-                tripDateRangeText: cloud.tripDateRangeText,
-                lastEditedAt: cloud.updatedAt,
-                tripStartDate: nil,
-                tripEndDate: nil,
-                totalPlaceVisitCount: 0,
-                tripDurationDays: 1,
-                caption: nil,
-                ownerScope: .account,
-                ownerUserId: userId,
-                cloudId: cloud.id,
-                cloudState: cloud.isArchived ? .uploadedArchived : .uploadedActive,
-                syncStatus: .clean
-            )
-            recents.append(blog)
-        }
-        persistIndex()
-    }
-
     /// Call when user completes the Create Blog sequence (before showing RecapSavedView).
     /// - Parameters:
     ///   - ownerScope: `.anonymous` for logged-out users, `.account` when signed in.
@@ -410,6 +367,7 @@ final class CreatedRecapBlogStore: ObservableObject {
             selectedPhotoCount: trip.selectedPhotoCount,
             countryName: detail.countryName ?? old.countryName,
             tripDateRangeText: trip.tripDateRangeDisplayText,
+            lastEditedAt: Date(),
             tripStartDate: trip.earliestDate,
             tripEndDate: trip.latestDate,
             totalPlaceVisitCount: detail.days.reduce(0) { $0 + $1.placeStops.count },
@@ -453,6 +411,7 @@ final class CreatedRecapBlogStore: ObservableObject {
             selectedPhotoCount: old.selectedPhotoCount,
             countryName: country,
             tripDateRangeText: old.tripDateRangeText,
+            lastEditedAt: asDraft ? old.lastEditedAt : Date(),
             tripStartDate: old.tripStartDate,
             tripEndDate: old.tripEndDate,
             totalPlaceVisitCount: detail.days.reduce(0) { $0 + $1.placeStops.count },

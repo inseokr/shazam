@@ -141,6 +141,7 @@ final class AuthService: NSObject, ObservableObject {
                 id: cred.user,
                 email: cred.email,
                 displayName: name,
+                username: nil,
                 provider: .apple
             )
             finishSignIn(user: user)
@@ -266,6 +267,7 @@ extension AuthService {
             id: actualId,
             email: actualEmail,
             displayName: actualDisplayName,
+            username: response.user?.username,
             provider: .email
         )
         finishSignIn(user: user)

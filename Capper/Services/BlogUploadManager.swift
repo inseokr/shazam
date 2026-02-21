@@ -82,7 +82,7 @@ final class BlogUploadManager: ObservableObject {
                 showUploadSuccessBanner = true
                 let snapshot = updatedDetail
                 Task {
-                    try? await APIManager.shared.publishBlogDetail(snapshot)
+                    await APIManager.shared.publishBlog(detail: snapshot)
                 }
             } else {
                 uploadErrorMessage = "\(failCount) photo\(failCount == 1 ? "" : "s") failed to upload. Try again."

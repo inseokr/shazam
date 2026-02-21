@@ -30,14 +30,14 @@ final class ProfileMapViewModel: ObservableObject {
         self.mapRegion = defaultRegion
     }
 
-    /// All recap blogs (trips) from the store.
+    /// Only cloud-published blogs appear on the Profile map, matching the Profile page list.
     var allTrips: [CreatedRecapBlog] {
-        store.recents
+        store.cloudPublishedBlogs
     }
 
-    /// Country summaries for modal Mode A. Sorted by last trip date descending.
+    /// Country summaries for the filter bar — only cloud-published blogs.
     var countrySummaries: [CountryRecapSummary] {
-        store.countrySummaries
+        store.cloudCountrySummaries
     }
 
     /// Trips to show on map and in modal; filtered by selected country and search text when set. Sorted newest to oldest.

@@ -266,12 +266,13 @@ struct TripsView: View {
         .padding(.horizontal, Self.listHorizontalPadding)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color.black)
-        .clipShape(RoundedRectangle(cornerRadius: 20))
+        .clipShape(UnevenRoundedRectangle(topLeadingRadius: 20, topTrailingRadius: 20))
         .overlay(
-            RoundedRectangle(cornerRadius: 20)
+            UnevenRoundedRectangle(topLeadingRadius: 20, topTrailingRadius: 20)
                 .stroke(Color.white.opacity(0.08), lineWidth: 1)
                 .ignoresSafeArea()
         )
+        .ignoresSafeArea(.container, edges: .bottom)
         .offset(y: sheetOffset)
         .animation(.interactiveSpring(response: 0.35, dampingFraction: 0.86), value: sheetOffset)
         .simultaneousGesture(
@@ -449,15 +450,13 @@ struct TripsView: View {
                         .font(.subheadline)
                         .fontWeight(.semibold)
                         .foregroundColor(.white.opacity(0.85))
-                    ForEach(group.trips) { trip in
-                    ForEach(group.trips) { trip in
-                        TripDraftRow(
-                            trip: trip,
-                            onCoverTapped: { createBlogFlowTrip = trip },
-                            onTextTapped: { withAnimation { tripForPopup = trip } }
-                        )
-                    }
-                    }
+                        ForEach(group.trips) { trip in
+                            TripDraftRow(
+                                trip: trip,
+                                onCoverTapped: { createBlogFlowTrip = trip },
+                                onTextTapped: { withAnimation { tripForPopup = trip } }
+                            )
+                        }
                 }
             }
         }
@@ -496,13 +495,11 @@ struct TripsView: View {
                             .fontWeight(.semibold)
                             .foregroundColor(.white.opacity(0.85))
                         ForEach(group.trips) { trip in
-                        ForEach(group.trips) { trip in
                             TripDraftRow(
                                 trip: trip,
                                 onCoverTapped: { createBlogFlowTrip = trip },
                                 onTextTapped: { withAnimation { tripForPopup = trip } }
                             )
-                        }
                         }
                     }
                 }

@@ -962,7 +962,12 @@ struct RecapBlogPageView: View {
     // MARK: - Extracted Body Helpers
 
     private var navTitle: String {
-        createdRecapStore.recents.first(where: { $0.sourceTripId == blogId })?.lastEditedAt == nil ? "Draft" : "Recap Blog"
+        let hasBeenSaved = createdRecapStore.recents.first(where: { $0.sourceTripId == blogId })?.lastEditedAt != nil
+        if !hasBeenSaved {
+            return "Draft"
+        } else {
+            return isEditMode ? "Edit Mode" : "Recap Blog"
+        }
     }
 
     @ToolbarContentBuilder
@@ -971,10 +976,14 @@ struct RecapBlogPageView: View {
             Button {
                 if isEditMode {
                     let isFirstCreation = createdRecapStore.recents.first(where: { $0.sourceTripId == blogId })?.lastEditedAt == nil
-                    if isFirstCreation {
-                        showNewBlogExitConfirmation = true
-                    } else if draftSnapshot != nil && draft != draftSnapshot {
-                        showUnsavedChangesAlert = true
+                    let hasChanges = draftSnapshot != nil && draft != draftSnapshot
+                    
+                    if hasChanges {
+                        if isFirstCreation {
+                            showNewBlogExitConfirmation = true
+                        } else {
+                            showUnsavedChangesAlert = true
+                        }
                     } else {
                         dismiss()
                     }
@@ -1231,11 +1240,11 @@ struct RecapBlogPageView: View {
             AutosaveManager.shared.cancelPending()
             createdRecapStore.saveBlogDetail(draft)
 
-            // Publish blog JSON to server (fire-and-forget)
+            // Create blog on server (fire-and-forget)
             if failCount == 0 {
                 let snapshot = draft
                 Task {
-                    try? await APIManager.shared.publishBlogDetail(snapshot)
+                    await APIManager.shared.publishBlog(detail: snapshot)
                 }
             }
 

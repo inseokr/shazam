@@ -60,27 +60,42 @@ final class APIManager {
         var request = URLRequest(url: url)
         request.httpMethod = method
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        
+
         // Inject JWT Token (matching Axios Interceptor logic)
         if requiresAuth, let token = AuthService.shared.currentJwtToken {
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         }
-        
+
         if let body = body {
             request.httpBody = body
         }
-        
+
+        // 🔍 DEBUG: Log outgoing request
+        print("🌐 [\(method)] \(baseURL + endpoint)")
+        if let body = body, let bodyString = String(data: body, encoding: .utf8) {
+            let preview = bodyString.prefix(500)
+            print("   📤 Body (\(body.count) bytes): \(preview)\(bodyString.count > 500 ? "…" : "")")
+        }
+
         let (data, response): (Data, URLResponse)
         do {
             (data, response) = try await URLSession.shared.data(for: request)
         } catch {
+            print("   ❌ Network error: \(error.localizedDescription)")
             throw APIError.networkError(error)
         }
-        
+
         guard let httpResponse = response as? HTTPURLResponse else {
             throw APIError.invalidResponse
         }
-        
+
+        // 🔍 DEBUG: Log response
+        print("   📥 \(httpResponse.statusCode) (\(data.count) bytes)")
+        if let responseString = String(data: data, encoding: .utf8) {
+            let preview = responseString.prefix(300)
+            print("   📥 Response: \(preview)\(responseString.count > 300 ? "…" : "")")
+        }
+
         guard (200...299).contains(httpResponse.statusCode) else {
             // Attempt to extract an error message from the response body
             var errorMessage = "Unknown server error."
@@ -162,6 +177,9 @@ final class APIManager {
 
         request.httpBody = body
 
+        // 🔍 DEBUG: Log photo upload
+        print("🌐 [POST] \(fileServerURL)/place/file_upload — photo: \(filename) (\(imageData.count) bytes)")
+
         let (data, response): (Data, URLResponse)
         do {
             (data, response) = try await URLSession.shared.data(for: request)
@@ -201,6 +219,7 @@ final class APIManager {
             throw APIError.invalidResponse
         }
 
+        print("   ✅ Uploaded → \(cloudURL)")
         return cloudURL
     }
 
@@ -218,23 +237,149 @@ final class APIManager {
         return try await uploadPhoto(image: image, filename: filename)
     }
 
-    // MARK: - Blog Publishing
+    // MARK: - Blog Creation (Linkedspaces / Pocketverse)
 
-    /// Publishes a RecapBlogDetail JSON to the API server so it can be viewed on the web.
-    /// Called after photos are uploaded to the cloud (fire-and-forget from the UI).
-    func publishBlogDetail(_ detail: RecapBlogDetail) async throws {
-        let encoder = JSONEncoder()
-        encoder.dateEncodingStrategy = .iso8601
-        let body = try encoder.encode(detail)
-        let _: PublishResponse = try await request(
-            endpoint: "/bloggo/recap/publish",
+    /// Creates a blog with places on the Pocketverse backend.
+    /// Maps RecapBlogDetail → Linkedspaces payload format and POSTs to /placeVisitHistory/createBlogWithPlaces.
+    /// - Returns: `CreateBlogResponse` containing the server-assigned `blogKey`.
+    func createBlogWithPlaces(username: String, detail: RecapBlogDetail) async throws -> CreateBlogResponse {
+        // Collect all timestamps to derive start/end
+        let allPhotos = detail.days.flatMap(\.placeStops).flatMap { $0.photos.filter(\.isIncluded) }
+        let timestamps = allPhotos.map { $0.timestamp }
+        let startMs = timestamps.min().map { Int64($0.timeIntervalSince1970 * 1000) } ?? 0
+        let endMs = timestamps.max().map { Int64($0.timeIntervalSince1970 * 1000) } ?? 0
+
+        // Build placeList from all days/stops
+        var placeList: [[String: Any]] = []
+        for day in detail.days {
+            for stop in day.placeStops {
+                let includedPhotos = stop.photos.filter(\.isIncluded)
+                guard !includedPhotos.isEmpty else { continue }
+
+                let photoList: [[String: Any]] = includedPhotos.compactMap { photo in
+                    guard let uri = photo.cloudURL else { return nil }
+                    return [
+                        "uri": uri,
+                        "creationTime": Int64(photo.timestamp.timeIntervalSince1970 * 1000)
+                    ]
+                }
+
+                let coord: [String: Double] = {
+                    if let loc = stop.representativeLocation {
+                        return ["latitude": loc.latitude, "longitude": loc.longitude]
+                    }
+                    if let loc = includedPhotos.first?.location {
+                        return ["latitude": loc.latitude, "longitude": loc.longitude]
+                    }
+                    return ["latitude": 0, "longitude": 0]
+                }()
+
+                let visitedTime = Int64(includedPhotos[0].timestamp.timeIntervalSince1970 * 1000)
+
+                let place: [String: Any] = [
+                    "placeName": stop.placeTitle,
+                    "coordinate": coord,
+                    "visitedTime": visitedTime,
+                    "photoList": photoList
+                ]
+                placeList.append(place)
+            }
+        }
+
+        let payload: [String: Any] = [
+            "username": username,
+            "blogMetaData": [
+                "title": detail.title,
+                "startTimestamp": startMs,
+                "endTimestamp": endMs,
+                "destinationName": detail.countryName ?? ""
+            ],
+            "placeList": placeList
+        ]
+
+        let body = try JSONSerialization.data(withJSONObject: payload)
+        return try await request(
+            endpoint: "/placeVisitHistory/createBlogWithPlaces",
             method: "POST",
             body: body,
             requiresAuth: true
         )
     }
+
+    /// Uploads a cover photo for a blog, then notifies the server.
+    /// - Parameters:
+    ///   - blogKey: The server-assigned blog key from createBlogWithPlaces.
+    ///   - assetIdentifier: The PHAsset local identifier for the cover photo.
+    func uploadCoverPhoto(blogKey: Int, assetIdentifier: String) async throws {
+        let cloudURL = try await uploadPhoto(assetIdentifier: assetIdentifier)
+        let payload: [String: Any] = ["coverPhotoUrl": cloudURL]
+        let body = try JSONSerialization.data(withJSONObject: payload)
+        let _: GenericResponse = try await request(
+            endpoint: "/listing/event/\(blogKey)/cover-photo",
+            method: "POST",
+            body: body,
+            requiresAuth: true
+        )
+    }
+
+    /// Sets the privacy of a blog on the Pocketverse backend.
+    func setBlogPrivacy(blogKey: Int, privacy: String = "public") async throws {
+        let payload: [String: Any] = ["blogKey": blogKey, "privacy": privacy]
+        let body = try JSONSerialization.data(withJSONObject: payload)
+        let _: GenericResponse = try await request(
+            endpoint: "/placeVisitHistory/privacy-control",
+            method: "POST",
+            body: body,
+            requiresAuth: true
+        )
+    }
+
+    /// Full post-upload publish sequence: create blog → cover photo → privacy.
+    /// Fire-and-forget from upload flows. Errors are logged but not re-thrown.
+    func publishBlog(detail: RecapBlogDetail) async {
+        let user = AuthService.shared.currentUser
+        print("🔍 publishBlog — user: id=\(user?.id ?? "nil"), username=\(user?.username ?? "nil"), displayName=\(user?.displayName ?? "nil"), email=\(user?.email ?? "nil")")
+
+        guard let username = user?.username ?? user?.displayName ?? user?.email else {
+            print("⚠️ No username available — skipping createBlogWithPlaces")
+            return
+        }
+
+        print("🔍 publishBlog — resolved username: \(username)")
+        print("🔍 publishBlog — blog title: \(detail.title), days: \(detail.days.count), country: \(detail.countryName ?? "nil")")
+
+        let allPhotos = detail.days.flatMap(\.placeStops).flatMap { $0.photos.filter(\.isIncluded) }
+        let withCloudURL = allPhotos.filter { $0.cloudURL != nil }
+        print("🔍 publishBlog — photos: \(allPhotos.count) included, \(withCloudURL.count) have cloudURL")
+
+        do {
+            print("🔍 Step 1/3: Calling createBlogWithPlaces...")
+            let response = try await createBlogWithPlaces(username: username, detail: detail)
+            print("✅ Blog created with blogKey: \(response.blogKey), placeIndices: \(response.placeIndices ?? [])")
+
+            // TODO: Cover photo upload — endpoint not yet available on server
+            // if let coverAssetId = detail.selectedCoverPhotoIdentifier {
+            //     try await uploadCoverPhoto(blogKey: response.blogKey, assetIdentifier: coverAssetId)
+            // }
+            print("🔍 Step 2/3: Cover photo — skipped (endpoint not ready)")
+
+            print("🔍 Step 3/3: Setting privacy to public...")
+            try await setBlogPrivacy(blogKey: response.blogKey)
+            print("✅ Privacy set to public for blogKey: \(response.blogKey)")
+
+            print("🎉 publishBlog complete — all 3 steps succeeded")
+        } catch {
+            print("🚨 publishBlog failed: \(error)")
+        }
+    }
 }
 
-private struct PublishResponse: Decodable {
+struct CreateBlogResponse: Decodable {
+    let blogKey: Int
+    let placeIndices: [Int]?
+}
+
+private struct GenericResponse: Decodable {
     let result: String?
+    let message: String?
 }

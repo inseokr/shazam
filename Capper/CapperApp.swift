@@ -53,11 +53,8 @@ struct CapperApp: App {
             }
             // Sync + import prompt on login
             .onChange(of: authStateManager.authState) { _, newState in
-                if case .loggedIn(let userId) = newState {
-                    Task {
-                        await SyncEngine.shared.fetchAndMerge(userId: userId)
-                        authStateManager.checkAndPromptImportIfNeeded()
-                    }
+                if case .loggedIn = newState {
+                    authStateManager.checkAndPromptImportIfNeeded()
                 }
             }
             // Import drafts modal (presented at app root so it overlays any screen)

@@ -10,8 +10,10 @@ import SwiftUI
 struct ProfileManagementView: View {
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var createdRecapStore: CreatedRecapBlogStore
+    @EnvironmentObject private var authService: AuthService
 
     @State private var selectedBlog: CreatedRecapBlog?
+    @State private var showAuth = false
     @State private var uploadingBlogId: UUID?
     @State private var uploadProgress: (current: Int, total: Int) = (0, 0)
     @State private var showUploadError = false
@@ -266,7 +268,14 @@ struct ProfileManagementView: View {
                 }
             }
             .alert("Upload Failed", isPresented: $showUploadError) {
-                Button("OK", role: .cancel) { }
+                if uploadErrorMessage == "Please sign in to upload photos." {
+                    Button("Sign In") {
+                        showAuth = true
+                    }
+                    Button("Close", role: .cancel) { }
+                } else {
+                    Button("OK", role: .cancel) { }
+                }
             } message: {
                 Text(uploadErrorMessage)
             }
@@ -279,6 +288,12 @@ struct ProfileManagementView: View {
                 }
             } message: { blog in
                 Text("Are you sure you want to remove this blog from the cloud?")
+            }
+            .fullScreenCover(isPresented: $showAuth) {
+                AuthView(onAuthenticated: {
+                    showAuth = false
+                })
+                .environmentObject(authService)
             }
         }
     }
@@ -364,7 +379,7 @@ struct ProfileManagementView: View {
             if failCount == 0 {
                 let snapshot = detail
                 Task {
-                    try? await APIManager.shared.publishBlogDetail(snapshot)
+                    await APIManager.shared.publishBlog(detail: snapshot)
                 }
             }
 

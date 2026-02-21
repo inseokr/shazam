@@ -15,6 +15,7 @@ struct AuthUser: Codable, Equatable, Sendable {
     let id: String
     let email: String?
     let displayName: String?
+    let username: String?
     let provider: AuthProvider
 
     var initials: String {
