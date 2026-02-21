@@ -378,8 +378,13 @@ struct ProfileManagementView: View {
 
             if failCount == 0 {
                 let snapshot = detail
+                let sourceTripId = blog.sourceTripId
                 Task {
-                    await APIManager.shared.publishBlog(detail: snapshot)
+                    if let blogKey = await APIManager.shared.publishBlog(detail: snapshot) {
+                        await MainActor.run {
+                            createdRecapStore.setBlogKey(blogId: sourceTripId, blogKey: blogKey)
+                        }
+                    }
                 }
             }
 

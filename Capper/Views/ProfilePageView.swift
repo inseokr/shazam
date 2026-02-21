@@ -542,6 +542,12 @@ struct ProfilePhotoViewer: View {
 struct BlogCard: View {
     let blog: CreatedRecapBlog
 
+    /// Resolved username for share links (username → displayName → email fallback).
+    static var resolvedUsername: String {
+        let user = AuthService.shared.currentUser
+        return user?.username ?? user?.displayName ?? user?.email ?? "user"
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: ProfileTheme.Spacing.md) {
 
@@ -571,7 +577,9 @@ struct BlogCard: View {
                     }
                     
                     // Share Button overlay
-                    if let url = URL(string: "https://www.linkedspaces.com/bloggo/recap?id=\(blog.sourceTripId.uuidString)") {
+                    if let key = blog.blogKey,
+                       let safeUsername = BlogCard.resolvedUsername.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed),
+                       let url = URL(string: "https://ls-beta-84213e85e326.herokuapp.com/trip/\(safeUsername)/\(key)") {
                         ShareLink(
                             item: url,
                             subject: Text(blog.title),

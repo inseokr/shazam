@@ -473,12 +473,8 @@ struct RecapBlogPageView: View {
                                 .foregroundColor(.white)
                                 .padding(.horizontal, 16)
                                 .padding(.vertical, 9)
-                                .background(.ultraThinMaterial)
+                                .background(Color.blue)
                                 .clipShape(Capsule())
-                                .overlay(
-                                    Capsule()
-                                        .stroke(Color.white.opacity(0.35), lineWidth: 1)
-                                )
                                 .shadow(color: .black.opacity(0.3), radius: 6, y: 2)
                             }
                             .buttonStyle(.plain)
@@ -697,8 +693,14 @@ struct RecapBlogPageView: View {
     private var shareItems: [Any] {
         // Put the URL first so iOS "Copy" action copies the link, not the text.
         if blogIsInCloud,
-           let url = URL(string: "https://www.linkedspaces.com/bloggo/recap?id=\(blogId.uuidString)") {
-            return [url, shareText]
+           let blog = createdRecapStore.recents.first(where: { $0.sourceTripId == blogId }),
+           let key = blog.blogKey {
+            let user = AuthService.shared.currentUser
+            let username = user?.username ?? user?.displayName ?? user?.email ?? "user"
+            let safeUsername = username.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? "user"
+            if let url = URL(string: "https://ls-beta-84213e85e326.herokuapp.com/trip/\(safeUsername)/\(key)") {
+                return [url, shareText]
+            }
         }
         return [shareText]
     }
@@ -1243,8 +1245,13 @@ struct RecapBlogPageView: View {
             // Create blog on server (fire-and-forget)
             if failCount == 0 {
                 let snapshot = draft
+                let currentBlogId = blogId
                 Task {
-                    await APIManager.shared.publishBlog(detail: snapshot)
+                    if let blogKey = await APIManager.shared.publishBlog(detail: snapshot) {
+                        await MainActor.run {
+                            createdRecapStore.setBlogKey(blogId: currentBlogId, blogKey: blogKey)
+                        }
+                    }
                 }
             }
 

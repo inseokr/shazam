@@ -61,6 +61,8 @@ struct CreatedRecapBlog: Identifiable, Equatable, Hashable, Codable, Sendable {
     var tripEndDate: Date?
     /// First available note or caption
     var caption: String?
+    /// Server-assigned blog key from createBlogWithPlaces. Used for share links.
+    var blogKey: Int?
 
     // MARK: - Ownership & Sync (v2 schema)
 
@@ -93,6 +95,7 @@ struct CreatedRecapBlog: Identifiable, Equatable, Hashable, Codable, Sendable {
         totalPlaceVisitCount: Int = 0,
         tripDurationDays: Int = 1,
         caption: String? = nil,
+        blogKey: Int? = nil,
         ownerScope: OwnerScope = .anonymous,
         ownerUserId: String? = nil,
         cloudId: String? = nil,
@@ -115,6 +118,7 @@ struct CreatedRecapBlog: Identifiable, Equatable, Hashable, Codable, Sendable {
         self.totalPlaceVisitCount = totalPlaceVisitCount
         self.tripDurationDays = tripDurationDays
         self.caption = caption
+        self.blogKey = blogKey
         self.ownerScope = ownerScope
         self.ownerUserId = ownerUserId
         self.cloudId = cloudId
@@ -142,6 +146,7 @@ struct CreatedRecapBlog: Identifiable, Equatable, Hashable, Codable, Sendable {
         tripStartDate       = try c.decodeIfPresent(Date.self, forKey: .tripStartDate)
         tripEndDate         = try c.decodeIfPresent(Date.self, forKey: .tripEndDate)
         caption             = try c.decodeIfPresent(String.self, forKey: .caption)
+        blogKey             = try c.decodeIfPresent(Int.self, forKey: .blogKey)
         // v2 fields – default gracefully for v1 data on disk
         ownerScope          = try c.decodeIfPresent(OwnerScope.self, forKey: .ownerScope) ?? .anonymous
         ownerUserId         = try c.decodeIfPresent(String.self, forKey: .ownerUserId)
@@ -372,7 +377,8 @@ final class CreatedRecapBlogStore: ObservableObject {
             tripEndDate: trip.latestDate,
             totalPlaceVisitCount: detail.days.reduce(0) { $0 + $1.placeStops.count },
             tripDurationDays: detail.days.count,
-            caption: self.primaryCaption(from: detail)
+            caption: self.primaryCaption(from: detail),
+            blogKey: old.blogKey
             )
             self.persistIndex()
             Task {
@@ -416,7 +422,8 @@ final class CreatedRecapBlogStore: ObservableObject {
             tripEndDate: old.tripEndDate,
             totalPlaceVisitCount: detail.days.reduce(0) { $0 + $1.placeStops.count },
             tripDurationDays: detail.days.count,
-            caption: self.primaryCaption(from: detail)
+            caption: self.primaryCaption(from: detail),
+            blogKey: old.blogKey
         )
         persistIndex()
         Task {
@@ -593,6 +600,13 @@ final class CreatedRecapBlogStore: ObservableObject {
         guard let detail = blogDetailsBySourceId[blogId] else { return false }
         let included = detail.days.flatMap(\.placeStops).flatMap(\.photos).filter(\.isIncluded)
         return !included.isEmpty && included.allSatisfy { $0.cloudURL != nil }
+    }
+
+    /// Stores the server-assigned blogKey on the blog entry for share links.
+    func setBlogKey(blogId: UUID, blogKey: Int) {
+        guard let idx = recents.firstIndex(where: { $0.sourceTripId == blogId }) else { return }
+        recents[idx].blogKey = blogKey
+        persistIndex()
     }
 
     /// Clears all cloud URLs from a blog's photos (removes from cloud).

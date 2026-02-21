@@ -81,8 +81,13 @@ final class BlogUploadManager: ObservableObject {
             if failCount == 0 {
                 showUploadSuccessBanner = true
                 let snapshot = updatedDetail
+                let blogId = snapshot.id
                 Task {
-                    await APIManager.shared.publishBlog(detail: snapshot)
+                    if let blogKey = await APIManager.shared.publishBlog(detail: snapshot) {
+                        await MainActor.run {
+                            CreatedRecapBlogStore.shared.setBlogKey(blogId: blogId, blogKey: blogKey)
+                        }
+                    }
                 }
             } else {
                 uploadErrorMessage = "\(failCount) photo\(failCount == 1 ? "" : "s") failed to upload. Try again."

@@ -335,14 +335,15 @@ final class APIManager {
     }
 
     /// Full post-upload publish sequence: create blog → cover photo → privacy.
-    /// Fire-and-forget from upload flows. Errors are logged but not re-thrown.
-    func publishBlog(detail: RecapBlogDetail) async {
+    /// Returns the server-assigned blogKey on success, nil on failure.
+    @discardableResult
+    func publishBlog(detail: RecapBlogDetail) async -> Int? {
         let user = AuthService.shared.currentUser
         print("🔍 publishBlog — user: id=\(user?.id ?? "nil"), username=\(user?.username ?? "nil"), displayName=\(user?.displayName ?? "nil"), email=\(user?.email ?? "nil")")
 
         guard let username = user?.username ?? user?.displayName ?? user?.email else {
             print("⚠️ No username available — skipping createBlogWithPlaces")
-            return
+            return nil
         }
 
         print("🔍 publishBlog — resolved username: \(username)")
@@ -368,8 +369,10 @@ final class APIManager {
             print("✅ Privacy set to public for blogKey: \(response.blogKey)")
 
             print("🎉 publishBlog complete — all 3 steps succeeded")
+            return response.blogKey
         } catch {
             print("🚨 publishBlog failed: \(error)")
+            return nil
         }
     }
 }
